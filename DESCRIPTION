@@ -1,0 +1,13 @@
+Package: ffnnet
+Version: 0.1-1
+Date: 2015-01-20
+Title: Fastfood Neural Networks
+Authors@R: c(person("Kellan", "Fluette", role = c("aut", "cre"),
+		email = "fluetteka@g.cofc.edu"),)
+Author: Kellan Fluette
+Maintainer: Kellan Fluette <fluettka@g.cofc.edu>
+Depends: R (>= 1.8.0)
+Description: Implementation of the Fastfood Neural Network algorithm as found in the papers referenced in README.md.
+License: Apache
+URL: https://github.com/kafluette/ffnnet
+BugReports: https://github.com/kafluette/ffnnet/issues
