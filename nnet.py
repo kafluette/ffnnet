@@ -63,11 +63,11 @@ class HiddenLayer(object):
         self.input = input
         # end-snippet-1
 
-        # `W` is initialized with `W_values` which is uniformely sampled
+        # `W` is initialized with `W_values` which is uniformly sampled
         # from sqrt(-6./(n_in+n_hidden)) and sqrt(6./(n_in+n_hidden))
         # for tanh activation function
         # the output of uniform if converted using asarray to dtype
-        # theano.config.floatX so that the code is runable on GPU
+        # theano.config.floatX so that the code is runanble on GPU
         # Note : optimal initialization of weights is dependent on the
         #        activation function used (among other things).
         #        For example, results presented in [Xavier10] suggest that you

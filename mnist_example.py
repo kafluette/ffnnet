@@ -8,10 +8,6 @@ import os
 import sys
 import time
 
-import numpy
-import theano
-import theano.tensor as T
-
 from logistic_sgd import load_data
 from nnet import *
 
