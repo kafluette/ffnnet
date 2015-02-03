@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
 from:
     http://www.deeplearning.net/tutorial/mlp.html#mlp
