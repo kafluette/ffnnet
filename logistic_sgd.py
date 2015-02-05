@@ -42,7 +42,7 @@ import numpy
 import theano
 import theano.tensor as T
 
-from mnist_example import load_data
+from ffnnet_example import load_data
 
 
 class LogisticRegression(object):
@@ -199,7 +199,7 @@ def sgd_optimization_mnist(learning_rate=0.13, n_epochs=1000,
 
     # #####################
     # BUILD ACTUAL MODEL #
-    ######################
+    # #####################
     print '... building the model'
 
     # allocate symbolic variables for the data
