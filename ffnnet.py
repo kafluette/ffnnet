@@ -7,62 +7,88 @@ __docformat__ = 'restructedtext en'
 import itertools
 
 import numpy
+import numpy.linalg
 import theano
 import theano.tensor as T
+from scipy.linalg import hadamard
+from scipy.special import gamma
 
 from logistic_sgd import LogisticRegression
 
 
 class HiddenLayer(object):
-    def __init__(self, layer_no, num_layers, rng, input, n_in, n_out, W=None, b=None, S=None, G=None, B=None):
-        self.input = input
+    pass
 
-        if W is None:
-            W_values = numpy.asarray(
-                rng.uniform(  # initialize using IWI method
-                              low=(2 * layer_no - 1) / (num_layers - 1),
-                              high=(2 * layer_no + 1) / (num_layers - 1),
-                    size=(n_in, n_out)
-                ),
-                dtype=theano.config.floatX
-            )
-            W = theano.shared(value=W_values, name='W', borrow=True)
 
-        if b is None:
-            b_values = numpy.zeros((n_out,), dtype=theano.config.floatX)
-            b = theano.shared(value=b_values, name='b', borrow=True)
+def __init__(self, layer_no, num_layers, rng, input, n_in, n_out, d, perm_matrix, H, W=None, b=None, S=None, G=None,
+             B=None):
+    self.input = input
 
-        if S is None:
-            pass
-        if G is None:
-            pass
-        if B is None:
-            pass
+    if W is None:
+        W_values = numpy.asarray(
+            rng.uniform(  # initialize using IWI method
+                          low=(2 * layer_no - 1) / (num_layers - 1),
+                          high=(2 * layer_no + 1) / (num_layers - 1),
+                          size=(n_in, n_out)
+            ),
+            dtype=theano.config.floatX
+        )
+        W = theano.shared(value=W_values, name='W', borrow=True)
 
-        self.W = W
-        self.b = b
+    if b is None:
+        b_values = numpy.zeros((n_out,), dtype=theano.config.floatX)
+        b = theano.shared(value=b_values, name='b', borrow=True)
 
-        # FFNNet params
-        self.S = S
-        self.G = G
-        self.B = B
+    if G is None:
+        diag_values = numpy.asarray(rng.normal(0, 1, size=d))
+        G_values = numpy.zeros((d, d))
+        for i in xrange(d):
+            G_values[i, i] = diag_values[i]
+        G = theano.shared(value=G_values, name='G', borrow=True)
+    if B is None:
+        diag_values = rng.randint(0, 1, size=d)
+        B_values = numpy.zeros((d, d))
+        for i in xrange(d):
+            B_values[i, i] = diag_values[i]
+        B = theano.shared(value=B_values, name='B', borrow=True)
+    if S is None:
+        S_values = numpy.zeros((d, d))
+        for i in xrange(d):
+            s_i = ((2 * numpy.pi) ** (-d / 2)) * (1 / ((numpy.pi ** (d / 2)) / gamma((d / 2) + 1)))
+            S_values[i, i] = s_i * (numpy.linalg.norm(G, ord='fro') ** (-1 / 2))
 
-        lin_output = T.dot(input, self.W) + self.b
-        self.output = T.nnet.sigmoid(lin_output)
+    self.W = W
+    self.b = b
 
-        # parameters of the model
-        self.params = [self.W, self.b, self.S, self.G, self.B]
+    # FFNNet params
+    self.S = S
+    self.G = G
+    self.B = B
+
+    lin_output = T.dot(input, self.W) + self.b
+    self.output = T.nnet.sigmoid(lin_output)
+
+    # parameters of the model
+    self.params = [self.W, self.b, self.S, self.G, self.B]
 
 
 class MLP(object):
-    def __init__(self, rng, input, n_in, n_layers, n_nodes, n_out, output_clz=LogisticRegression):
+    def __init__(self, rng, input, n_in, n_layers, n_nodes, n_out, d, output_clz=LogisticRegression):
+        # generate ffnnet parameters perm_matrix (random permutation matrix) and H (hadamard matrix)
+        H_values = hadamard(d, dtype=numpy.int)
+        H = theano.shared(value=H_values, name='H', borrow=True)
+        perm_matrix_values = numpy.zeros((d, d))
+        perm_matrix = theano.shared(value=perm_matrix_values, name='perm_matrix', borrow=True)
+
         # generate the first hidden layer, taking as inputs the input nodes
         self.hiddenLayer[0] = HiddenLayer(
             rng=rng,
             input=input,
             n_in=n_in,
             n_out=n_nodes,
-            activation=T.sigmoid
+            d=d,
+            perm_matrix=perm_matrix,
+            H=H
         )
 
         # generate the rest of the hidden layers, taking as inputs the previous layer's output
@@ -72,7 +98,9 @@ class MLP(object):
                 input=self.hiddenLayer[l - 1].output,  # TODO do transform here (not above, in HiddenLayer)
                 n_in=n_in,
                 n_out=n_nodes,
-                activation=T.sigmoid
+                d=d,
+                perm_matrix=perm_matrix,
+                H=H
             )
 
         # The output layer gets as input the hidden units of the hidden layer
