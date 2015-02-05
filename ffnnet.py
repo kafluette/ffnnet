@@ -8,7 +8,7 @@ This tutorial introduces the multilayer perceptron using Theano.
  A multilayer perceptron is a logistic regressor where
 instead of feeding the input to the logistic regression you insert a
 intermediate layer, called the hidden layer, that has a nonlinear
-activation function (usually tanh or sigmoid) . One can use many such
+activation function (usually tanh or tanh) . One can use many such
 hidden layers making the architecture deep. The tutorial will also tackle
 the problem of MNIST digit classification.
 
@@ -31,13 +31,14 @@ import theano.tensor as T
 from logistic_sgd import LogisticRegression
 
 
+
 # start-snippet-1
 class HiddenLayer(object):
     def __init__(self, rng, input, n_in, n_out, W=None, b=None,
                  activation=T.tanh):
         """
         Typical hidden layer of a MLP: units are fully-connected and have
-        sigmoidal activation function. Weight matrix W is of shape (n_in,n_out)
+        tanhal activation function. Weight matrix W is of shape (n_in,n_out)
         and the bias vector b is of shape (n_out,).
 
         NOTE : The nonlinearity used here is tanh
@@ -69,9 +70,9 @@ class HiddenLayer(object):
         # the output of uniform if converted using asarray to dtype
         # theano.config.floatX so that the code is runanble on GPU
         # Note : optimal initialization of weights is dependent on the
-        #        activation function used (among other things).
+        # activation function used (among other things).
         #        For example, results presented in [Xavier10] suggest that you
-        #        should use 4 times larger initial weights for sigmoid
+        # should use 4 times larger initial weights for tanh
         #        compared to tanh
         #        We have no info for other function, so we use the same as
         #        tanh.
@@ -84,7 +85,7 @@ class HiddenLayer(object):
                 ),
                 dtype=theano.config.floatX
             )
-            if activation == theano.tensor.nnet.sigmoid:
+            if activation == theano.tensor.nnet.tanh:
                 W_values *= 4
 
             W = theano.shared(value=W_values, name='W', borrow=True)
@@ -112,8 +113,8 @@ class MLP(object):
     A multilayer perceptron is a feedforward artificial neural network model
     that has one layer or more of hidden units and nonlinear activations.
     Intermediate layers usually have as activation function tanh or the
-    sigmoid function (defined here by a ``HiddenLayer`` class)  while the
-    top layer is a softamx layer (defined here by a ``LogisticRegression``
+    tanh function (defined here by a ``HiddenLayer`` class)  while the
+    top layer is a softmax layer (defined here by a ``LogisticRegression``
     class).
     """
 
@@ -143,7 +144,7 @@ class MLP(object):
         # Since we are dealing with a one hidden layer MLP, this will translate
         # into a HiddenLayer with a tanh activation function connected to the
         # LogisticRegression layer; the activation function can be replaced by
-        # sigmoid or any other nonlinear function
+        # tanh or any other nonlinear function
         self.hiddenLayer = HiddenLayer(
             rng=rng,
             input=input,
