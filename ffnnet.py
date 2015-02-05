@@ -14,28 +14,18 @@ from logistic_sgd import LogisticRegression
 
 
 class HiddenLayer(object):
-    def __init__(self, rng, input, n_in, n_out, W=None, b=None,
-                 S=None, G=None, B=None, activation=T.sigmoid):
+    def __init__(self, layer_no, num_layers, rng, input, n_in, n_out, W=None, b=None, S=None, G=None, B=None):
         self.input = input
-        # `W` is initialized with `W_values` which is uniformly sampled
-        # from sqrt(-6./(n_in+n_hidden)) and sqrt(6./(n_in+n_hidden))
-        # for tanh activation function
-        # the output of uniform if converted using asarray to dtype
-        # theano.config.floatX so that the code is runnable on GPU
-        # Note : optimal initialization of weights is dependent on the
-        # activation function used (among other things).
+
         if W is None:
             W_values = numpy.asarray(
-                rng.uniform(
-                    low=-numpy.sqrt(6. / (n_in + n_out)),
-                    high=numpy.sqrt(6. / (n_in + n_out)),
+                rng.uniform(  # initialize using IWI method
+                              low=(2 * layer_no - 1) / (num_layers - 1),
+                              high=(2 * layer_no + 1) / (num_layers - 1),
                     size=(n_in, n_out)
                 ),
                 dtype=theano.config.floatX
             )
-            if activation == T.tanh:
-                W_values *= 4
-
             W = theano.shared(value=W_values, name='W', borrow=True)
 
         if b is None:
@@ -57,9 +47,8 @@ class HiddenLayer(object):
         self.G = G
         self.B = B
 
-        # TODO here add the transform on the input ?
         lin_output = T.dot(input, self.W) + self.b
-        self.output = lin_output if activation is None else activation(lin_output)
+        self.output = T.nnet.sigmoid(lin_output)
 
         # parameters of the model
         self.params = [self.W, self.b, self.S, self.G, self.B]
@@ -77,10 +66,10 @@ class MLP(object):
         )
 
         # generate the rest of the hidden layers, taking as inputs the previous layer's output
-        for i in xrange(1, n_layers):
-            self.hiddenLayer[i] = HiddenLayer(
+        for l in xrange(1, n_layers):
+            self.hiddenLayer[l] = HiddenLayer(
                 rng=rng,
-                input=self.hiddenLayer[i - 1].output,  # TODO do transform here (not above, in HiddenLayer)
+                input=self.hiddenLayer[l - 1].output,  # TODO do transform here (not above, in HiddenLayer)
                 n_in=n_in,
                 n_out=n_nodes,
                 activation=T.sigmoid
