@@ -22,6 +22,7 @@ from ffnnet import *
 
 
 
+
 # set up logging
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
@@ -123,14 +124,15 @@ def test_ffnnet_mnist(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1
 
     # for ffnnet stuff to work, the input size must be a power of 2
     # so round up the input size to the next highest power of 2 and pad with zeros as needed
-    cur_l = numpy.log2(train_set_x.shape[1])
+    cur_l = numpy.log2(train_set_x.get_value(borrow=True).shape[1])
     next_l = int(numpy.ceil(cur_l))
     d = 2 ** next_l
     pad_size = d - n_nodes
     if pad_size > 0:
-        train_set_x.resize((train_set_x.shape[0], d))
-        valid_set_x.resize((train_set_x.shape[0], d))
-        test_set_x.resize((train_set_x.shape[0], d))
+        n = train_set_x.get_value(borrow=True).shape[0]
+        train_set_x.get_value(borrow=True).resize((n, d))
+        valid_set_x.get_value(borrow=True).resize((n, d))
+        test_set_x.get_value(borrow=True).resize((n, d))
 
     # compute number of minibatches for training, validation and testing
     n_train_batches = train_set_x.get_value(borrow=True).shape[0] / batch_size
