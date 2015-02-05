@@ -1,28 +1,10 @@
 """
 from:
     http://www.deeplearning.net/tutorial/mlp.html#mlp
-
-
-This tutorial introduces the multilayer perceptron using Theano.
-
- A multilayer perceptron is a logistic regressor where
-instead of feeding the input to the logistic regression you insert a
-intermediate layer, called the hidden layer, that has a nonlinear
-activation function (usually tanh or tanh) . One can use many such
-hidden layers making the architecture deep. The tutorial will also tackle
-the problem of MNIST digit classification.
-
-.. math::
-
-    f(x) = G( b^{(2)} + W^{(2)}( s( b^{(1)} + W^{(1)} x))),
-
-References:
-
-    - textbooks: "Pattern Recognition and Machine Learning" -
-                 Christopher M. Bishop, section 5
-
 """
 __docformat__ = 'restructedtext en'
+
+import itertools
 
 import numpy
 import theano
@@ -33,20 +15,15 @@ from logistic_sgd import LogisticRegression
 
 class HiddenLayer(object):
     def __init__(self, rng, input, n_in, n_out, W=None, b=None,
-                 activation=T.tanh):
+                 S=None, G=None, B=None, activation=T.sigmoid):
         self.input = input
         # `W` is initialized with `W_values` which is uniformly sampled
         # from sqrt(-6./(n_in+n_hidden)) and sqrt(6./(n_in+n_hidden))
         # for tanh activation function
         # the output of uniform if converted using asarray to dtype
-        # theano.config.floatX so that the code is runanble on GPU
+        # theano.config.floatX so that the code is runnable on GPU
         # Note : optimal initialization of weights is dependent on the
         # activation function used (among other things).
-        #        For example, results presented in [Xavier10] suggest that you
-        # should use 4 times larger initial weights for tanh
-        #        compared to tanh
-        #        We have no info for other function, so we use the same as
-        #        tanh.
         if W is None:
             W_values = numpy.asarray(
                 rng.uniform(
@@ -56,7 +33,7 @@ class HiddenLayer(object):
                 ),
                 dtype=theano.config.floatX
             )
-            if activation == theano.tensor.nnet.tanh:
+            if activation == T.tanh:
                 W_values *= 4
 
             W = theano.shared(value=W_values, name='W', borrow=True)
@@ -65,63 +42,76 @@ class HiddenLayer(object):
             b_values = numpy.zeros((n_out,), dtype=theano.config.floatX)
             b = theano.shared(value=b_values, name='b', borrow=True)
 
+        if S is None:
+            pass
+        if G is None:
+            pass
+        if B is None:
+            pass
+
         self.W = W
         self.b = b
 
+        # FFNNet params
+        self.S = S
+        self.G = G
+        self.B = B
+
+        # TODO here add the transform on the input ?
         lin_output = T.dot(input, self.W) + self.b
-        self.output = (
-            lin_output if activation is None
-            else activation(lin_output)
-        )
+        self.output = lin_output if activation is None else activation(lin_output)
+
         # parameters of the model
-        self.params = [self.W, self.b]
+        self.params = [self.W, self.b, self.S, self.G, self.B]
 
 
 class MLP(object):
-    def __init__(self, rng, input, n_in, n_hidden, n_out):
-        # Since we are dealing with a one hidden layer MLP, this will translate
-        # into a HiddenLayer with a tanh activation function connected to the
-        # LogisticRegression layer; the activation function can be replaced by
-        # tanh or any other nonlinear function
-        self.hiddenLayer = HiddenLayer(
+    def __init__(self, rng, input, n_in, n_layers, n_nodes, n_out, output_clz=LogisticRegression):
+        # generate the first hidden layer, taking as inputs the input nodes
+        self.hiddenLayer[0] = HiddenLayer(
             rng=rng,
             input=input,
             n_in=n_in,
-            n_out=n_hidden,
-            activation=T.tanh
+            n_out=n_nodes,
+            activation=T.sigmoid
         )
 
-        # The logistic regression layer gets as input the hidden units
-        # of the hidden layer
-        self.logRegressionLayer = LogisticRegression(
-            input=self.hiddenLayer.output,
-            n_in=n_hidden,
+        # generate the rest of the hidden layers, taking as inputs the previous layer's output
+        for i in xrange(1, n_layers):
+            self.hiddenLayer[i] = HiddenLayer(
+                rng=rng,
+                input=self.hiddenLayer[i - 1].output,  # TODO do transform here (not above, in HiddenLayer)
+                n_in=n_in,
+                n_out=n_nodes,
+                activation=T.sigmoid
+            )
+
+        # The output layer gets as input the hidden units of the hidden layer
+        self.outputLayer = output_clz(
+            input=self.hiddenLayer[n_layers - 1].output,
+            n_in=n_nodes,
             n_out=n_out
         )
 
-        # L1 norm ; one regularization option is to enforce L1 norm to
-        # be small
+        # L1 norm ; one regularization option is to enforce L1 norm to be small
+        # TODO is this weighting the correct way to do it? (also for L2)
         self.L1 = (
-            abs(self.hiddenLayer.W).sum()
-            + abs(self.logRegressionLayer.W).sum()
+            (abs(self.hiddenLayer[i].W).sum() for i in xrange(n_layers)).sum()
+            + abs(self.outputLayer.W).sum()
         )
 
-        # square of L2 norm ; one regularization option is to enforce
-        # square of L2 norm to be small
+        # square of L2 norm ; one regularization option is to enforce square of L2 norm to be small
         self.L2_sqr = (
             (self.hiddenLayer.W ** 2).sum()
-            + (self.logRegressionLayer.W ** 2).sum()
+            + (self.outputLayer.W ** 2).sum()
         )
 
-        # negative log likelihood of the MLP is given by the negative
-        # log likelihood of the output of the model, computed in the
-        # logistic regression layer
-        self.negative_log_likelihood = (
-            self.logRegressionLayer.negative_log_likelihood
+        # cross entropy cost of the MLP computed in the output layer
+        self.cross_entropy_cost = (
+            self.outputLayer.cross_entropy_cost
         )
         # same holds for the function computing the number of errors
-        self.errors = self.logRegressionLayer.errors
+        self.errors = self.outputLayer.errors
 
-        # the parameters of the model are the parameters of the two layer it is
-        # made out of
-        self.params = self.hiddenLayer.params + self.logRegressionLayer.params
+        # the parameters of the model are the parameters of the layers it is made out of (hiddens + output)
+        self.params = itertools.chain(*(self.hiddenLayer[i].params for i in xrange(n_layers))) + self.outputLayer.params

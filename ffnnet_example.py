@@ -12,6 +12,7 @@ import time
 import sys
 import cPickle
 import os
+import gzip
 
 from ffnnet import *
 
@@ -107,9 +108,10 @@ def load_data(dataset):
     return rval
 
 
-def test_ffnnet_mnist(learning_rate=0.01, n_epochs=1000,
-                      dataset='mnist.pkl.gz', batch_size=20,
-                      n_hidden=500):
+def test_ffnnet_mnist(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001,
+                      n_epochs=1000, dataset='mnist.pkl.gz',
+                      batch_size=20, n_nodes=10,
+                      n_layers=5):
     logger.info("Loading dataset %s", dataset)
     datasets = load_data(dataset)
 
@@ -132,16 +134,17 @@ def test_ffnnet_mnist(learning_rate=0.01, n_epochs=1000,
     rng = numpy.random.RandomState()
 
     # construct MLP class
-    classifier = MLP(rng=rng, input=x, n_in=28 * 28, n_hidden=n_hidden, n_out=10)
+    classifier = MLP(rng=rng, input=x, n_in=28 * 28, n_layers=n_layers, n_nodes=n_nodes, n_out=10)
 
     # the cost to minimize during training, expressed here symbolically
     # cross entropy error function
     cost = (
-
+        classifier.cross_entropy_cost(y)
+        + L1_reg * classifier.L1
+        + L2_reg * classifier.L2_sqr
     )
 
-    # compiles a Theano function that compiles the errors made on
-    # testing a minibatch
+    # compiles a Theano function that compiles the errors made on testing a minibatch
     test_model = theano.function(
         inputs=[index],
         outputs=classifier.errors(y),
