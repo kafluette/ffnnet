@@ -23,6 +23,7 @@ from ffnnet import *
 
 
 
+
 # set up logging
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
@@ -245,6 +246,26 @@ def test_ffnnet_mnist(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1
                     # test it on test set
                     test_losses = [test_model(i) for i in xrange(n_test_batches)]
                     test_score = numpy.mean(test_losses)
+
+                    print 'epoch {}, minibatch {}/{}, test error of best model {}'.format(
+                        epoch,
+                        minibatch_index + 1,
+                        n_train_batches,
+                        test_score * 100.0
+                    )
+
+            if patience <= iter:
+                done_looping = True
+                break
+
+    end_time = time.clock()
+    print 'Optimization complete. Best validation score of {} obtained at iteration {} with test performance {}'.format(
+        best_validation_loss * 100.0,
+        best_iter + 1,
+        test_score * 100.0
+    )
+    print >> sys.stderr, "The code for file '" + os.path.split(__file__)[1] + 'ran for {:.2f}m'.format(
+        (end_time - start_time) / 60.0)
 
 
 if __name__ == '__main__':
