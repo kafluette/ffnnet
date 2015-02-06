@@ -3,8 +3,7 @@
 uses the same mnist data set as the mnist_example but uses the algorithms in the ffnnet paper rather than the standard
 ones used in other examples
 
-Reference papers:
-Learning Fastfood Feature Transforms for Scalable Neural Networks. Bowick-Marchetti, Micol, et. al.
+See references in ffnnet.py
 """
 
 import logging
@@ -18,6 +17,7 @@ import numpy
 import numpy.random
 
 from ffnnet import *
+
 
 
 
