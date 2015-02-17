@@ -1,11 +1,4 @@
-"""
-References:
-    - http://www.deeplearning.net/tutorial/mlp.html#mlp
-    - Machine Learning: An Algorithmic Perspective 2e by Stephen Marshland
-    - Le, Q., & Smola, A. (2013). Fastfood — Approximating Kernel Expansions in Loglinear Time, 28.
-    - Bowick, M., & Neiswanger, W. (2013). Learning Fastfood Feature Transforms for Scalable Neural Networks. Proceedings of the International Conference on …, 1–15. Retrieved from http://jmlr.org/proceedings/papers/v28/le13-supp.pdf
-    - Rahimi, A. (Intel R. B., & Recht, B. (Caltech I. (n.d.). Weighted Sums of Random Kitchen Sinks : Replacing minimization with randomization in learning, 1(1), 1–8.
-"""
+
 __docformat__ = 'restructedtext en'
 
 import itertools
@@ -59,17 +52,18 @@ class HiddenLayer(object):
             for i in xrange(d):
                 s_i = ((2 * numpy.pi) ** (-d / 2)) * (1 / ((numpy.pi ** (d / 2)) / gamma((d / 2) + 1)))
                 S_values[i, i] = s_i * (numpy.linalg.norm(G.get_value(borrow=True), ord='fro') ** (-1 / 2))
+            S = theano.shared(value=S_values, name='S', borrow=True)
 
         self.W = W
         self.b = b
 
-        # FFNNet params
+        # FFnnet params
         self.S = S
         self.G = G
         self.B = B
 
         lin_output = T.dot(input, self.W) + self.b
-        self.output = T.nnet.sigmoid(lin_output)
+        self.output = T.nnet.nnet.sigmoid(lin_output)
 
         # parameters of the model
         self.params = [self.W, self.b, self.S, self.G, self.B]
@@ -112,7 +106,7 @@ class MLP(object):
                 layer_no=l + 1,
                 num_layers=n_layers,
                 rng=rng,
-                input=self.hiddenLayer[l - 1].output,
+                input=self.hiddenLayers[l - 1].output,
                 n_in=n_in,
                 n_out=n_nodes,
                 d=d,
@@ -127,13 +121,13 @@ class MLP(object):
 
         # L1 norm ; one regularization option is to enforce L1 norm to be small
         self.L1 = (
-            (abs(self.hiddenLayers[i].W).sum() for i in xrange(n_layers)).sum()
+            sum([abs(self.hiddenLayers[i].W).sum() for i in xrange(n_layers)])
             + abs(self.outputLayer.W).sum()
         )
 
         # square of L2 norm ; one regularization option is to enforce square of L2 norm to be small
         self.L2_sqr = (
-            (self.hiddenLayers.W ** 2).sum()
+            sum([self.hiddenLayers[i].W ** 2 for i in xrange(n_layers)])
             + (self.outputLayer.W ** 2).sum()
         )
 
@@ -141,22 +135,25 @@ class MLP(object):
         self.errors = self.outputLayer.errors
 
         # the parameters of the model are the parameters of the layers it is made out of (hiddens + output)
-        self.params = itertools.chain(
-            *(self.hiddenLayers[i].params for i in xrange(n_layers))) + self.outputLayer.params
+        self.params = list(itertools.chain(*[self.hiddenLayers[i].params for i in xrange(n_layers)])) + self.outputLayer.params
 
     def cross_entropy_cost(self, y):
-        pass
-        # y.shape[0] is (symbolically) the number of rows in y, i.e.,
-        # number of examples (call it n) in the minibatch
-        # T.arange(y.shape[0]) is a symbolic vector which will contain
-        # [0,1,2,... n-1] T.log(self.p_y_given_x) is a matrix of
-        # Log-Probabilities (call it LP) with one row per example and
-        # one column per class LP[T.arange(y.shape[0]),y] is a vector
-        # v containing [LP[0,y[0]], LP[1,y[1]], LP[2,y[2]], ...,
-        # LP[n-1,y[n-1]]] and T.mean(LP[T.arange(y.shape[0]),y]) is
-        # the mean (across minibatch examples) of the elements in v,
-        # i.e., the mean log-likelihood across the minibatch.
-        # # return -T.mean(T.log(self.p_y_given_x)[T.arange(y.shape[0]), y])
-
-        #results, updates = theano.scan(lambda v: T.tanh(T.dot(v, W) + b_sym), sequences=X)
-        #compute_elementwise = theano.function(inputs=[X, W, b_sym], outputs=[results])
+        sigma = 1
+        def f(l):
+            return T.dot(self.hiddenLayers[l].W, T.imag(phi(l, 1)(self.hiddenLayers[l-1].output)))
+        def phi(l, j):
+            S = self.hiddenLayers[l].S
+            G = self.hiddenLayers[l].G
+            B = self.hiddenLayers[l].B
+            PI = self.perm_matrix
+            H = self.H
+            d = self.d
+            m = self.n_nodes
+            print S, G, B, PI, H, d, m
+            return lambda h: 1/T.sqrt(m) * T.exp(1j*((1/sigma*T.sqrt(d)) * S * H * G * PI * H * B * h))
+        def h(l, j):
+            return T.nnet.sigmoid(T.dot(self.hiddenLayers[l].W, T.imag(phi(l-1, j)(self.hiddenLayers[l-1].output)))) \
+                if l > 0 else T.nnet.sigmoid(T.dot(self.hiddenLayers[l].W, T.imag(phi(l-1, j)(self.input))))
+        return -T.sum(theano.scan(
+                    fn=lambda n: y[n] * T.log(T.nnet.sigmoid(f(self.n_layers-1))) + (1 - y[n])*T.log(1 - T.nnet.sigmoid(f(self.n_layers-1))),
+                    sequences=[T.arange(y.shape[0])]))

@@ -94,7 +94,7 @@ def load_data(dataset):
 
 
 def test_mlp_mnist(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
-                   dataset='mnist.pkl.gz', batch_size=20, n_hidden=500):
+                   dataset='mnist.pkl.gz', batch_size=20, n_hidden=500, n_layers=5):
     """
     Demonstrate stochastic gradient descent optimization for a multilayer
     perceptron
@@ -151,8 +151,10 @@ def test_mlp_mnist(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000
         rng=rng,
         input=x,
         n_in=28 * 28,
-        n_hidden=n_hidden,
-        n_out=10
+        n_layers=n_layers,
+        n_nodes=n_hidden,
+        n_out=10,
+        d=1024
     )
 
     # start-snippet-4
@@ -160,11 +162,10 @@ def test_mlp_mnist(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000
     # the model plus the regularization terms (L1 and L2); cost is expressed
     # here symbolically
     cost = (
-        classifier.negative_log_likelihood(y)
+        classifier.cross_entropy_cost(y)
         + L1_reg * classifier.L1
         + L2_reg * classifier.L2_sqr
     )
-    # end-snippet-4
 
     # compiling a Theano function that computes the mistakes that are made
     # by the model on a minibatch
@@ -186,8 +187,7 @@ def test_mlp_mnist(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000
         }
     )
 
-    # start-snippet-5
-    # compute the gradient of cost with respect to theta (sotred in params)
+    # compute the gradient of cost with respect to theta (stored in params)
     # the resulting gradients will be stored in a list gparams
     gparams = [T.grad(cost, param) for param in classifier.params]
 
