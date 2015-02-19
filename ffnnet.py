@@ -149,11 +149,11 @@ class MLP(object):
             H = self.H
             d = self.d
             m = self.n_nodes
-            print S, G, B, PI, H, d, m
             return lambda h: 1/T.sqrt(m) * T.exp(1j*((1/sigma*T.sqrt(d)) * S * H * G * PI * H * B * h))
         def h(l, j):
             return T.nnet.sigmoid(T.dot(self.hiddenLayers[l].W, T.imag(phi(l-1, j)(self.hiddenLayers[l-1].output)))) \
                 if l > 0 else T.nnet.sigmoid(T.dot(self.hiddenLayers[l].W, T.imag(phi(l-1, j)(self.input))))
-        return -T.sum(theano.scan(
+        result, updates = theano.scan(
                     fn=lambda n: y[n] * T.log(T.nnet.sigmoid(f(self.n_layers-1))) + (1 - y[n])*T.log(1 - T.nnet.sigmoid(f(self.n_layers-1))),
-                    sequences=[T.arange(y.shape[0])]))
+                    sequences=[T.arange(10)])
+        return -result.sum()
