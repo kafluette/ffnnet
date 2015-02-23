@@ -149,11 +149,7 @@ def test_ffnnet_mnist(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1
 
     # the cost to minimize during training, expressed here symbolically
     # cross entropy error function
-    cost = (
-        classifier.cross_entropy_cost(y)
-        + L1_reg * classifier.L1
-        + L2_reg * classifier.L2_sqr
-    )
+    cost = classifier.cross_entropy_cost(y)# + L1_reg * classifier.L1 + L2_reg * classifier.L2_sqr
 
     # compiles a Theano function that compiles the errors made on testing a minibatch
     test_model = theano.function(
@@ -176,6 +172,7 @@ def test_ffnnet_mnist(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1
 
     # compute the gradient of cost with respect to theta (stored in params)
     # the resulting gradients will be stored in the list
+    print classifier.params
     gparams = [T.grad(cost, param) for param in classifier.params]
 
     # given A = [a1, a2, a3, a4] and B = [b1, b2, b3, b4]
