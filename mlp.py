@@ -29,20 +29,20 @@ import subprocess
 import numpy
 
 import theano
+import theano.compile
 import theano.tensor as T
 from scipy.special import gamma
 from scipy.linalg import hadamard
 
 from logistic_sgd import LogisticRegression
+from util import *
 
 
 def load_data(dataset):
     ''' Loads the dataset
 
-        5.9,3.0,5.1,1.8,Iris-virginica
-
     :type dataset: string
-    :param dataset: the path to the dataset (here MNIST)
+    :param dataset: the path to the dataset
     '''
 
     #############
@@ -135,7 +135,7 @@ class HiddenLayer(object):
         self.n_out = n_out
         self.prevHiddenLayer = prevHiddenLayer
 
-        layer_no = 0
+        layer_no = 1
         prev = prevHiddenLayer
         while prev is not None:
             layer_no += 1
@@ -190,7 +190,7 @@ class HiddenLayer(object):
             for i in xrange(d):
                 print "d =", d, ", gamma((d/2)+1) =", gamma((d / 2) + 1)
                 s_i = ((2 * numpy.pi) ** (-d / 2)) * (
-                1 / ((numpy.pi ** (d / 2)) / gamma(100)))  #gamma((d / float(2)) + 1)))
+                1 / ((numpy.pi ** (d / 2)) / gamma((d / float(2)) + 1)))
                 S_values[i, i] = s_i * (numpy.linalg.norm(G_values, ord='fro') ** (-1 / 2))
             S = theano.shared(value=S_values, name=dbg_name('S'), borrow=True)
 
@@ -267,11 +267,15 @@ class HiddenLayer(object):
         print "S.eval() =", S.eval()
         f = T.dot(self.W, T.imag(phi))
 
-        theano.printing.pprint(f)
+        print "f =", theano.pp(f)
 
         result, updates = theano.scan(
             fn=lambda n: y[n] * T.log(T.nnet.sigmoid(f)) + (1 - y[n]) * T.log(1 - T.nnet.sigmoid(f)),
             sequences=[T.arange(10)])
+
+        print "result =", theano.pp(result)
+
+        print ""
 
         #return -T.sum(result)
         return -f
@@ -366,7 +370,7 @@ class MLP(object):
 
 
 def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
-             dataset='iris.pkl', batch_size=20, n_hidden=500):
+             dataset='iris.pkl', batch_size=5, n_hidden=5):
     """
     Demonstrate stochastic gradient descent optimization for a multilayer
     perceptron
