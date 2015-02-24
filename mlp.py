@@ -23,6 +23,8 @@ __docformat__ = 'restructedtext en'
 import os
 import sys
 import time
+import cPickle
+import subprocess
 
 import numpy
 
@@ -31,10 +33,75 @@ import theano.tensor as T
 from scipy.special import gamma
 from scipy.linalg import hadamard
 
-from logistic_sgd import LogisticRegression, load_data
+from logistic_sgd import LogisticRegression
 
 
-# start-snippet-1
+def load_data(dataset):
+    ''' Loads the dataset
+
+        5.9,3.0,5.1,1.8,Iris-virginica
+
+    :type dataset: string
+    :param dataset: the path to the dataset (here MNIST)
+    '''
+
+    #############
+    # LOAD DATA #
+    #############
+
+    if (not os.path.isfile(dataset)) and dataset == 'iris.pkl':
+        import urllib
+        origin = (
+            'https://archive.ics.uci.edu/ml/machine-learning-databases/iris/iris.data'
+        )
+        print 'Downloading data from %s' % origin
+        urllib.urlretrieve(origin, 'iris.data')
+        print 'Running data preprocessing script ...'
+        subprocess.call(['python', 'preprocess_iris_data.py'])
+
+    print '... loading data'
+
+    # Load the dataset
+    f = open(dataset, 'rb')
+    train_set, valid_set, test_set = cPickle.load(f)
+    f.close()
+    #train_set, valid_set, test_set format: tuple(input, target)
+    #input is an numpy.ndarray of 2 dimensions (a matrix)
+    #witch row's correspond to an example. target is a
+    #numpy.ndarray of 1 dimensions (vector)) that have the same length as
+    #the number of rows in the input. It should give the target
+    #target to the example with the same index in the input.
+
+    def shared_dataset(data_xy, borrow=True):
+        """ Function that loads the dataset into shared variables
+
+        The reason we store our dataset in shared variables is to allow
+        Theano to copy it into the GPU memory (when code is run on GPU).
+        Since copying data into the GPU is slow, copying a minibatch everytime
+        is needed (the default behaviour if the data is not in a shared
+        variable) would lead to a large decrease in performance.
+        """
+        data_x, data_y = data_xy
+        shared_x = theano.shared(numpy.asarray(data_x,
+                                               dtype=theano.config.floatX),
+                                 borrow=borrow)
+        shared_y = theano.shared(numpy.asarray(data_y,
+                                               dtype=theano.config.floatX),
+                                 borrow=borrow)
+        # When storing data on the GPU it has to be stored as floats
+        # therefore we will store the labels as ``floatX`` as well
+        # (``shared_y`` does exactly that).
+        return shared_x, shared_y
+
+    test_set_x, test_set_y = shared_dataset(test_set)
+    valid_set_x, valid_set_y = shared_dataset(valid_set)
+    train_set_x, train_set_y = shared_dataset(train_set)
+
+    rval = [(train_set_x, train_set_y), (valid_set_x, valid_set_y),
+            (test_set_x, test_set_y)]
+    return rval
+
+
 class HiddenLayer(object):
     def __init__(self, rng, input, n_in, n_out, d, prevHiddenLayer=None, W=None, b=None, S=None, G=None, B=None,
                  activation=T.nnet.nnet.sigmoid):
@@ -299,7 +366,7 @@ class MLP(object):
 
 
 def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
-             dataset='mnist.pkl.gz', batch_size=20, n_hidden=500):
+             dataset='iris.pkl', batch_size=20, n_hidden=500):
     """
     Demonstrate stochastic gradient descent optimization for a multilayer
     perceptron
