@@ -171,10 +171,6 @@ class HiddenLayer(object):
 
             W = theano.shared(value=W_values, name=dbg_name('W'), borrow=True)
 
-        if b is None:
-            b_values = numpy.zeros((n_out,), dtype=theano.config.floatX)
-            b = theano.shared(value=b_values, name=dbg_name('b'), borrow=True)
-
         if G is None:
             diag_values = numpy.asarray(rng.normal(0, 1, size=d))
             G_values = numpy.zeros((d, d))
@@ -197,7 +193,6 @@ class HiddenLayer(object):
             S = theano.shared(value=S_values, name=dbg_name('S'), borrow=True)
 
         self.W = W
-        self.b = b
         self.S = S
         self.B = B
         self.G = G
@@ -213,24 +208,19 @@ class HiddenLayer(object):
 
         # calculate output
         sigma = 1.0
-        S = self.S
-        G = self.G
-        B = self.B
-        b = self.b
-        PI = self.perm_matrix
-        H = self.H
         d = self.d
         m = self.n_out
-        phi = 1 / T.sqrt(m) * T.exp(
-            1j * ((1 / sigma * T.sqrt(d)) * S * H * G * PI * H * B * (
-            self.prevHiddenLayer.output if self.prevHiddenLayer is not None else self.input)))
+        PI = perm_matrix
+        phi_inner = 1j * ((1 / sigma * T.sqrt(d)) * S * H * G * PI * H * B)
+        phi_inner *= self.prevHiddenLayer.output if self.prevHiddenLayer is not None else self.input[0]
+        phi = 1 / T.sqrt(m) * T.exp(T.diag(phi_inner))
         res = activation(T.dot(self.W, T.imag(phi)))
         self.output = res
 
         self.y_pred = T.argmax(self.output, axis=1)
 
         # parameters of the model
-        self.params = [self.W, self.b, self.S, self.B, self.G]
+        self.params = [self.W, self.S, self.B, self.G]
 
     def errors(self, y):
         """Return a float representing the number of errors in the minibatch
@@ -319,7 +309,7 @@ class MLP(object):
             n_in=n_in,
             n_out=n_hidden,
             d=d,
-            prevHiddenLayer=self.hiddenLayer,
+            prevHiddenLayer=None,
             activation=T.nnet.nnet.sigmoid
         )
 
@@ -349,7 +339,7 @@ class MLP(object):
 
         # the parameters of the model are the parameters of the two layer it is
         # made out of
-        self.params = self.hiddenLayer.params + self.outputLayer.params
+        self.params = self.outputLayer.params  #self.hiddenLayer.params + self.outputLayer.params
         # end-snippet-3
 
 
