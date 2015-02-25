@@ -211,9 +211,9 @@ class HiddenLayer(object):
         d = self.d
         m = self.n_out
         PI = perm_matrix
-        phi_inner = 1j * ((1 / sigma * T.sqrt(d)) * S * H * G * PI * H * B)
-        phi_inner *= self.prevHiddenLayer.output if self.prevHiddenLayer is not None else self.input[0]
-        phi = 1 / T.sqrt(m) * T.exp(T.diag(phi_inner))
+        phi_inner = 1j * ((1 / sigma * T.sqrt(d)) g* S * H * G * PI * H * B)
+        phi_inner *= T.transpose(self.prevHiddenLayer.output if self.prevHiddenLayer is not None else self.input)
+        phi = 1 / T.sqrt(m) * T.exp(phi_inner)
         res = activation(T.dot(self.W, T.imag(phi)))
         self.output = res
 
