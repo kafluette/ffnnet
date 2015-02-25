@@ -37,7 +37,7 @@ from scipy.linalg import hadamard
 from logistic_sgd import LogisticRegression
 from util import *
 
-
+# region load_data
 def load_data(dataset):
     ''' Loads the dataset
 
@@ -51,6 +51,7 @@ def load_data(dataset):
 
     if (not os.path.isfile(dataset)) and dataset == 'iris.pkl':
         import urllib
+
         origin = (
             'https://archive.ics.uci.edu/ml/machine-learning-databases/iris/iris.data'
         )
@@ -102,6 +103,9 @@ def load_data(dataset):
     return rval
 
 
+#endregion
+
+#region HiddenLayer
 class HiddenLayer(object):
     def __init__(self, rng, input, n_in, n_out, d, prevHiddenLayer=None, W=None, b=None, S=None, G=None, B=None,
                  activation=T.nnet.nnet.sigmoid):
@@ -190,7 +194,7 @@ class HiddenLayer(object):
             for i in xrange(d):
                 print "d =", d, ", gamma((d/2)+1) =", gamma((d / 2) + 1)
                 s_i = ((2 * numpy.pi) ** (-d / 2)) * (
-                1 / ((numpy.pi ** (d / 2)) / gamma((d / float(2)) + 1)))
+                    1 / ((numpy.pi ** (d / 2)) / gamma((d / float(2)) + 1)))
                 S_values[i, i] = s_i * (numpy.linalg.norm(G_values, ord='fro') ** (-1 / 2))
             S = theano.shared(value=S_values, name=dbg_name('S'), borrow=True)
 
@@ -245,6 +249,8 @@ class HiddenLayer(object):
             raise NotImplementedError()
 
     def cross_entropy_cost(self, y):
+        x = numpy.asarray([5.7, 4.4, 1.5, 0.4], dtype=numpy.int16)
+
         sigma = 1.0
 
         S = self.S
@@ -256,6 +262,8 @@ class HiddenLayer(object):
         d = self.d
         m = self.n_out
 
+        print "S.eval() =", S.eval()
+
         if self.prevHiddenLayer == None:
             phi = 1 / T.sqrt(m) * T.exp(1j * ((1 / sigma * T.sqrt(d)) * S * H * G * PI * H * B * self.input))
             res = T.nnet.sigmoid(T.dot(self.W, T.imag(phi)))
@@ -263,25 +271,29 @@ class HiddenLayer(object):
             phi = 1 / T.sqrt(m) * T.exp(
                 1j * ((1 / sigma * T.sqrt(d)) * S * H * G * PI * H * B * self.prevHiddenLayer.output))
             res = T.nnet.sigmoid(T.dot(self.W, T.imag(phi)))
+        print "phi =", theano.pp(phi)
+        print "phi.eval() = ", phi.eval({self.input: x})
+        print "res =", theano.pp(res)
+        print "res.eval() =", res.eval({self.input: x})
 
-        print "S.eval() =", S.eval()
         f = T.dot(self.W, T.imag(phi))
-
         print "f =", theano.pp(f)
+        print "f.eval() =", f.eval({self.input: x})
 
         result, updates = theano.scan(
             fn=lambda n: y[n] * T.log(T.nnet.sigmoid(f)) + (1 - y[n]) * T.log(1 - T.nnet.sigmoid(f)),
             sequences=[T.arange(10)])
-
+        result = -T.sum(result)
         print "result =", theano.pp(result)
+        print "result.eval() = ", result.eval({self.input: x})
 
         print ""
-
-        #return -T.sum(result)
         return -f
 
 
-# start-snippet-2
+#endregion
+
+#region MLP
 class MLP(object):
     """Multi-Layer Perceptron Class
 
@@ -369,6 +381,9 @@ class MLP(object):
         # end-snippet-3
 
 
+#endregion
+
+#region test_mlp
 def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
              dataset='iris.pkl', batch_size=5, n_hidden=5):
     """
@@ -428,9 +443,8 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
 
     # allocate symbolic variables for the data
     index = T.lscalar()  # index to a [mini]batch
-    x = T.matrix('x')  # the data is presented as rasterized images
-    y = T.ivector('y')  # the labels are presented as 1D vector of
-    # [int] labels
+    x = theano.printing.Print('x =')(T.matrix('x'))
+    y = T.ivector('y')
 
     rng = numpy.random.RandomState(1234)
 
@@ -438,9 +452,9 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
     classifier = MLP(
         rng=rng,
         input=x,
-        n_in=28 * 28,
+        n_in=4,
         n_hidden=n_hidden,
-        n_out=10,
+        n_out=3,
         d=d
     )
 
@@ -592,3 +606,4 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
 
 if __name__ == '__main__':
     test_mlp()
+#endregion
