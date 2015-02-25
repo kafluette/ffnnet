@@ -34,6 +34,7 @@ from scipy.special import gamma
 from scipy.linalg import hadamard
 
 
+
 # region load_data
 def load_data(dataset):
     ''' Loads the dataset
@@ -268,6 +269,7 @@ class HiddenLayer(object):
             phi = 1 / T.sqrt(m) * T.exp(
                 1j * ((1 / sigma * T.sqrt(d)) * S * H * G * PI * H * B * self.prevHiddenLayer.output))
             res = T.nnet.sigmoid(T.dot(self.W, T.imag(phi)))
+            
         print "phi =", theano.pp(phi)
         print "phi.eval() = ", phi.eval({self.input: x})
         print "res =", theano.pp(res)
