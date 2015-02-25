@@ -27,15 +27,12 @@ import cPickle
 import subprocess
 
 import numpy
-
 import theano
 import theano.compile
 import theano.tensor as T
 from scipy.special import gamma
 from scipy.linalg import hadamard
 
-from logistic_sgd import LogisticRegression
-from util import *
 
 # region load_data
 def load_data(dataset):
@@ -264,7 +261,7 @@ class HiddenLayer(object):
 
         print "S.eval() =", S.eval()
 
-        if self.prevHiddenLayer == None:
+        if self.prevHiddenLayer is None:
             phi = 1 / T.sqrt(m) * T.exp(1j * ((1 / sigma * T.sqrt(d)) * S * H * G * PI * H * B * self.input))
             res = T.nnet.sigmoid(T.dot(self.W, T.imag(phi)))
         else:
