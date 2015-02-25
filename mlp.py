@@ -182,10 +182,10 @@ class HiddenLayer(object):
                 G_values[i, i] = diag_values[i]
             G = theano.shared(value=G_values, name=dbg_name('G'), borrow=True)
         if B is None:
-            diag_values = rng.randint(0, 1, size=d)
+            diag_values = rng.randint(0, 2, d)
             B_values = numpy.zeros((d, d))
             for i in xrange(d):
-                B_values[i, i] = diag_values[i]
+                B_values[i, i] = -1 if diag_values[i] == 0 else 1
             B = theano.shared(value=B_values, name=dbg_name('B'), borrow=True)
         if S is None:
             S_values = numpy.zeros((d, d))
@@ -211,7 +211,7 @@ class HiddenLayer(object):
         perm_matrix = theano.shared(value=perm_matrix_values, name='perm_matrix', borrow=True)
         self.perm_matrix = perm_matrix
 
-        lin_output = T.dot(input, self.W) + self.b
+        lin_output = T.dot(self.input, self.W) + self.b
         self.output = (
             lin_output if activation is None
             else activation(lin_output)
@@ -271,13 +271,13 @@ class HiddenLayer(object):
             res = T.nnet.sigmoid(T.dot(self.W, T.imag(phi)))
             
         print "phi =", theano.pp(phi)
-        print "phi.eval() = ", phi.eval({self.input: x})
+        print "phi.eval() = ", phi.eval()
         print "res =", theano.pp(res)
-        print "res.eval() =", res.eval({self.input: x})
+        print "res.eval() =", res.eval()
 
         f = T.dot(self.W, T.imag(phi))
         print "f =", theano.pp(f)
-        print "f.eval() =", f.eval({self.input: x})
+        print "f.eval() =", f.eval()
 
         result, updates = theano.scan(
             fn=lambda n: y[n] * T.log(T.nnet.sigmoid(f)) + (1 - y[n]) * T.log(1 - T.nnet.sigmoid(f)),
@@ -442,10 +442,10 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
 
     # allocate symbolic variables for the data
     index = T.lscalar()  # index to a [mini]batch
-    x = theano.printing.Print('x =')(T.matrix('x'))
+    x = T.fvector('x')
     y = T.ivector('y')
 
-    rng = numpy.random.RandomState(1234)
+    rng = numpy.random.RandomState(1234)  # TODO
 
     # construct the MLP class
     classifier = MLP(
