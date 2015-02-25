@@ -43,7 +43,7 @@ def load_data(dataset):
     :param dataset: the path to the dataset
     '''
 
-    #############
+    # ############
     # LOAD DATA #
     #############
 
@@ -85,7 +85,7 @@ def load_data(dataset):
                                                dtype=theano.config.floatX),
                                  borrow=borrow)
         shared_y = theano.shared(numpy.asarray(data_y,
-                                               dtype=theano.config.floatX),
+                                               dtype=numpy.int32),
                                  borrow=borrow)
         # When storing data on the GPU it has to be stored as floats
         # therefore we will store the labels as ``floatX`` as well
@@ -101,7 +101,7 @@ def load_data(dataset):
     return rval
 
 
-#endregion
+# endregion
 
 #region HiddenLayer
 class HiddenLayer(object):
@@ -211,11 +211,21 @@ class HiddenLayer(object):
         perm_matrix = theano.shared(value=perm_matrix_values, name='perm_matrix', borrow=True)
         self.perm_matrix = perm_matrix
 
-        lin_output = T.dot(self.input, self.W) + self.b
-        self.output = (
-            lin_output if activation is None
-            else activation(lin_output)
-        )
+        # calculate output
+        sigma = 1.0
+        S = self.S
+        G = self.G
+        B = self.B
+        b = self.b
+        PI = self.perm_matrix
+        H = self.H
+        d = self.d
+        m = self.n_out
+        phi = 1 / T.sqrt(m) * T.exp(
+            1j * ((1 / sigma * T.sqrt(d)) * S * H * G * PI * H * B * (
+            self.prevHiddenLayer.output if self.prevHiddenLayer is not None else self.input)))
+        res = activation(T.dot(self.W, T.imag(phi)))
+        self.output = res
 
         self.y_pred = T.argmax(self.output, axis=1)
 
@@ -247,47 +257,10 @@ class HiddenLayer(object):
             raise NotImplementedError()
 
     def cross_entropy_cost(self, y):
-        x = numpy.asarray([5.7, 4.4, 1.5, 0.4], dtype=numpy.int16)
-
-        sigma = 1.0
-
-        S = self.S
-        G = self.G
-        B = self.B
-        b = self.b
-        PI = self.perm_matrix
-        H = self.H
-        d = self.d
-        m = self.n_out
-
-        print "S.eval() =", S.eval()
-
-        if self.prevHiddenLayer is None:
-            phi = 1 / T.sqrt(m) * T.exp(1j * ((1 / sigma * T.sqrt(d)) * S * H * G * PI * H * B * self.input))
-            res = T.nnet.sigmoid(T.dot(self.W, T.imag(phi)))
-        else:
-            phi = 1 / T.sqrt(m) * T.exp(
-                1j * ((1 / sigma * T.sqrt(d)) * S * H * G * PI * H * B * self.prevHiddenLayer.output))
-            res = T.nnet.sigmoid(T.dot(self.W, T.imag(phi)))
-            
-        print "phi =", theano.pp(phi)
-        print "phi.eval() = ", phi.eval()
-        print "res =", theano.pp(res)
-        print "res.eval() =", res.eval()
-
-        f = T.dot(self.W, T.imag(phi))
-        print "f =", theano.pp(f)
-        print "f.eval() =", f.eval()
-
         result, updates = theano.scan(
-            fn=lambda n: y[n] * T.log(T.nnet.sigmoid(f)) + (1 - y[n]) * T.log(1 - T.nnet.sigmoid(f)),
-            sequences=[T.arange(10)])
-        result = -T.sum(result)
-        print "result =", theano.pp(result)
-        print "result.eval() = ", result.eval({self.input: x})
-
-        print ""
-        return -f
+            fn=lambda n: y[n] * T.log(self.output) + (1 - y[n]) * T.log(1 - self.output),
+            sequences=[T.arange(y.shape[0])])
+        return -T.sum(result)
 
 
 #endregion
@@ -342,7 +315,7 @@ class MLP(object):
 
         self.outputLayer = HiddenLayer(
             rng=rng,
-            input=input,
+            input=self.hiddenLayer.output,
             n_in=n_in,
             n_out=n_hidden,
             d=d,
@@ -418,6 +391,10 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
     valid_set_x, valid_set_y = datasets[1]
     test_set_x, test_set_y = datasets[2]
 
+    n_train = train_set_x.get_value(borrow=True).shape[0]
+    n_test = test_set_x.get_value(borrow=True).shape[0]
+    n_valid = valid_set_x.get_value(borrow=True).shape[0]
+
     # for ffnnet stuff to work, the input size must be a power of 2
     # so round up the input size to the next highest power of 2 and pad with zeros as needed
     cur_l = numpy.log2(train_set_x.get_value(borrow=True).shape[1])
@@ -425,15 +402,9 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
     d = 2 ** next_l
     pad_size = d - n_hidden
     if pad_size > 0:
-        n = train_set_x.get_value(borrow=True).shape[0]
-        train_set_x.get_value(borrow=True).resize((n, d))
-        valid_set_x.get_value(borrow=True).resize((n, d))
-        test_set_x.get_value(borrow=True).resize((n, d))
-
-    # compute number of minibatches for training, validation and testing
-    n_train_batches = train_set_x.get_value(borrow=True).shape[0] / batch_size
-    n_valid_batches = valid_set_x.get_value(borrow=True).shape[0] / batch_size
-    n_test_batches = test_set_x.get_value(borrow=True).shape[0] / batch_size
+        train_set_x.get_value(borrow=True).resize((n_train, d))
+        valid_set_x.get_value(borrow=True).resize((n_valid, d))
+        test_set_x.get_value(borrow=True).resize((n_test, d))
 
     # #####################
     # BUILD ACTUAL MODEL #
@@ -450,7 +421,7 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
     # construct the MLP class
     classifier = MLP(
         rng=rng,
-        input=x,
+        input=train_set_x,
         n_in=4,
         n_hidden=n_hidden,
         n_out=3,
@@ -474,8 +445,8 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
         inputs=[index],
         outputs=classifier.errors(y),
         givens={
-            x: test_set_x[index * batch_size:(index + 1) * batch_size],
-            y: test_set_y[index * batch_size:(index + 1) * batch_size]
+            x: test_set_x,
+            y: test_set_y
         }
     )
 
@@ -483,13 +454,13 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
         inputs=[index],
         outputs=classifier.errors(y),
         givens={
-            x: valid_set_x[index * batch_size:(index + 1) * batch_size],
-            y: valid_set_y[index * batch_size:(index + 1) * batch_size]
+            x: valid_set_x,
+            y: valid_set_y
         }
     )
 
     # start-snippet-5
-    # compute the gradient of cost with respect to theta (sotred in params)
+    # compute the gradient of cost with respect to theta (stored in params)
     # the resulting gradients will be stored in a list gparams
     gparams = [T.grad(cost, param) for param in classifier.params]
 
@@ -513,8 +484,8 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
         outputs=cost,
         updates=updates,
         givens={
-            x: train_set_x[index * batch_size: (index + 1) * batch_size],
-            y: train_set_y[index * batch_size: (index + 1) * batch_size]
+            x: train_set_x,
+            y: train_set_y
         }
     )
     # end-snippet-5
@@ -530,7 +501,7 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
     # found
     improvement_threshold = 0.995  # a relative improvement of this much is
     # considered significant
-    validation_frequency = min(n_train_batches, patience / 2)
+    validation_frequency = patience / 2
     # go through this many
     # minibatche before checking the network
     # on the validation set; in this case we
@@ -545,25 +516,24 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
     done_looping = False
 
     while (epoch < n_epochs) and (not done_looping):
-        epoch = epoch + 1
-        for minibatch_index in xrange(n_train_batches):
+        epoch += 1
+        for idx in xrange(n_train):
+            avg_cost = train_model(idx)
 
-            minibatch_avg_cost = train_model(minibatch_index)
             # iteration number
-            iter = (epoch - 1) * n_train_batches + minibatch_index
+            iter = (epoch - 1) + idx
 
             if (iter + 1) % validation_frequency == 0:
                 # compute zero-one loss on validation set
-                validation_losses = [validate_model(i) for i
-                                     in xrange(n_valid_batches)]
+                validation_losses = [validate_model(i) for i in xrange(n_valid)]
                 this_validation_loss = numpy.mean(validation_losses)
 
                 print(
-                    'epoch %i, minibatch %i/%i, validation error %f %%' %
+                    'epoch %i, idx %i/%i, validation error %f %%' %
                     (
                         epoch,
-                        minibatch_index + 1,
-                        n_train_batches,
+                        idx + 1,
+                        n_train,
                         this_validation_loss * 100.
                     )
                 )
@@ -582,12 +552,12 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
 
                     # test it on the test set
                     test_losses = [test_model(i) for i
-                                   in xrange(n_test_batches)]
+                                   in xrange(n_test)]
                     test_score = numpy.mean(test_losses)
 
-                    print(('     epoch %i, minibatch %i/%i, test error of '
+                    print(('     epoch %i, idx %i/%i, test error of '
                            'best model %f %%') %
-                          (epoch, minibatch_index + 1, n_train_batches,
+                          (epoch, idx + 1, n_train,
                            test_score * 100.))
 
             if patience <= iter:
