@@ -45,7 +45,7 @@ def load_data(dataset):
 
     # ############
     # LOAD DATA #
-    #############
+    # ############
 
     if (not os.path.isfile(dataset)) and dataset == 'iris.pkl':
         import urllib
@@ -103,7 +103,7 @@ def load_data(dataset):
 
 # endregion
 
-#region HiddenLayer
+# region HiddenLayer
 class HiddenLayer(object):
     def __init__(self, rng, input, n_in, n_out, d, prevHiddenLayer=None, W=None, b=None, S=None, G=None, B=None,
                  activation=T.nnet.nnet.sigmoid):
@@ -186,7 +186,6 @@ class HiddenLayer(object):
         if S is None:
             S_values = numpy.zeros((d, d))
             for i in xrange(d):
-                print "d =", d, ", gamma((d/2)+1) =", gamma((d / 2) + 1)
                 s_i = ((2 * numpy.pi) ** (-d / 2)) * (
                     1 / ((numpy.pi ** (d / 2)) / gamma((d / float(2)) + 1)))
                 S_values[i, i] = s_i * (numpy.linalg.norm(G_values, ord='fro') ** (-1 / 2))
@@ -211,13 +210,12 @@ class HiddenLayer(object):
         d = self.d
         m = self.n_out
         PI = perm_matrix
-        phi_inner = 1j * ((1 / sigma * T.sqrt(d)) g* S * H * G * PI * H * B)
-        phi_inner *= T.transpose(self.prevHiddenLayer.output if self.prevHiddenLayer is not None else self.input)
+        phi_inner = 1j * ((1 / sigma * T.sqrt(d)) * T.dot(S, T.dot(H, T.dot(G, T.dot(PI, T.dot(H, T.dot(B, input)))))))
         phi = 1 / T.sqrt(m) * T.exp(phi_inner)
         res = activation(T.dot(self.W, T.imag(phi)))
         self.output = res
 
-        self.y_pred = T.argmax(self.output, axis=1)
+        self.y_pred = self.output
 
         # parameters of the model
         self.params = [self.W, self.S, self.B, self.G]
@@ -267,7 +265,7 @@ class MLP(object):
     class).
     """
 
-    def __init__(self, rng, input, n_in, n_hidden, n_out, d):
+    def __init__(self, rng, input, n_in, n_out, d):
         """Initialize the parameters for the multilayer perceptron
 
         :type rng: numpy.random.RandomState
@@ -298,7 +296,7 @@ class MLP(object):
             rng=rng,
             input=input,
             n_in=n_in,
-            n_out=n_hidden,
+            n_out=n_out,
             d=d,
             activation=T.nnet.nnet.sigmoid
         )
@@ -307,9 +305,9 @@ class MLP(object):
             rng=rng,
             input=self.hiddenLayer.output,
             n_in=n_in,
-            n_out=n_hidden,
+            n_out=n_out,
             d=d,
-            prevHiddenLayer=None,
+            prevHiddenLayer=self.hiddenLayer,
             activation=T.nnet.nnet.sigmoid
         )
 
@@ -347,7 +345,7 @@ class MLP(object):
 
 #region test_mlp
 def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
-             dataset='iris.pkl', batch_size=5, n_hidden=5):
+             dataset='iris.pkl', n_hidden=5):
     """
     Demonstrate stochastic gradient descent optimization for a multilayer
     perceptron
@@ -411,9 +409,8 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
     # construct the MLP class
     classifier = MLP(
         rng=rng,
-        input=train_set_x,
+        input=x,
         n_in=4,
-        n_hidden=n_hidden,
         n_out=3,
         d=d
     )
@@ -432,21 +429,13 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
     # compiling a Theano function that computes the mistakes that are made
     # by the model on a minibatch
     test_model = theano.function(
-        inputs=[index],
-        outputs=classifier.errors(y),
-        givens={
-            x: test_set_x,
-            y: test_set_y
-        }
+        inputs=[x, y],
+        outputs=classifier.errors(y)
     )
 
     validate_model = theano.function(
-        inputs=[index],
-        outputs=classifier.errors(y),
-        givens={
-            x: valid_set_x,
-            y: valid_set_y
-        }
+        inputs=[x, y],
+        outputs=classifier.errors(y)
     )
 
     # start-snippet-5
@@ -470,13 +459,9 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
     # in the same time updates the parameter of the model based on the rules
     # defined in `updates`
     train_model = theano.function(
-        inputs=[index],
+        inputs=[x, y],
         outputs=cost,
-        updates=updates,
-        givens={
-            x: train_set_x,
-            y: train_set_y
-        }
+        updates=updates
     )
     # end-snippet-5
 
@@ -487,15 +472,9 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
 
     # early-stopping parameters
     patience = 10000  # look as this many examples regardless
-    patience_increase = 2  # wait this much longer when a new best is
-    # found
-    improvement_threshold = 0.995  # a relative improvement of this much is
-    # considered significant
+    patience_increase = 2  # wait this much longer when a new best is found
+    improvement_threshold = 0.995  # a relative improvement of this much is considered significant
     validation_frequency = patience / 2
-    # go through this many
-    # minibatche before checking the network
-    # on the validation set; in this case we
-    # check every epoch
 
     best_validation_loss = numpy.inf
     best_iter = 0
@@ -508,14 +487,15 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
     while (epoch < n_epochs) and (not done_looping):
         epoch += 1
         for idx in xrange(n_train):
-            avg_cost = train_model(idx)
+            print "Training on idx " + str(idx)
+            avg_cost = train_model(train_set_x[idx], train_set_y[idx])
 
             # iteration number
             iter = (epoch - 1) + idx
 
             if (iter + 1) % validation_frequency == 0:
                 # compute zero-one loss on validation set
-                validation_losses = [validate_model(i) for i in xrange(n_valid)]
+                validation_losses = [validate_model(valid_set_x[i], valid_set_y[i]) for i in xrange(n_valid)]
                 this_validation_loss = numpy.mean(validation_losses)
 
                 print(
@@ -541,7 +521,7 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
                     best_iter = iter
 
                     # test it on the test set
-                    test_losses = [test_model(i) for i
+                    test_losses = [test_model(test_set_x[i], test_set_y[i]) for i
                                    in xrange(n_test)]
                     test_score = numpy.mean(test_losses)
 
