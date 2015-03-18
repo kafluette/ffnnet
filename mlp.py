@@ -1,7 +1,7 @@
 """
 This tutorial introduces the multilayer perceptron using Theano.
 
- A multilayer perceptron is a logistic regressor where
+A multilayer perceptron is a logistic regressor where
 instead of feeding the input to the logistic regression you insert a
 intermediate layer, called the hidden layer, that has a nonlinear
 activation function (usually tanh or sigmoid) . One can use many such
@@ -10,103 +10,38 @@ the problem of MNIST digit classification.
 
 .. math::
 
-    f(x) = G( b^{(2)} + W^{(2)}( s( b^{(1)} + W^{(1)} x))),
+f(x) = G( b^{(2)} + W^{(2)}( s( b^{(1)} + W^{(1)} x))),
 
 References:
 
-    - textbooks: "Pattern Recognition and Machine Learning" -
-                 Christopher M. Bishop, section 5
+- textbooks: "Pattern Recognition and Machine Learning" -
+Christopher M. Bishop, section 5
 
 """
 __docformat__ = 'restructedtext en'
 
+
 import os
 import sys
 import time
-import cPickle
-import subprocess
 
 import numpy
-import theano
-import theano.compile
-import theano.tensor as T
-from scipy.special import gamma
+import numpy.linalg
+import numpy.random
+
 from scipy.linalg import hadamard
 
+import theano
+import theano.tensor as T
 
+from logistic_sgd import LogisticRegression, load_data
 
-# region load_data
-def load_data(dataset):
-    ''' Loads the dataset
+theano.config.optimizer = 'None'
+theano.config.exception_verbosity = 'high'
 
-    :type dataset: string
-    :param dataset: the path to the dataset
-    '''
-
-    # ############
-    # LOAD DATA #
-    # ############
-
-    if (not os.path.isfile(dataset)) and dataset == 'iris.pkl':
-        import urllib
-
-        origin = (
-            'https://archive.ics.uci.edu/ml/machine-learning-databases/iris/iris.data'
-        )
-        print 'Downloading data from %s' % origin
-        urllib.urlretrieve(origin, 'iris.data')
-        print 'Running data preprocessing script ...'
-        subprocess.call(['python', 'preprocess_iris_data.py'])
-
-    print '... loading data'
-
-    # Load the dataset
-    f = open(dataset, 'rb')
-    train_set, valid_set, test_set = cPickle.load(f)
-    f.close()
-    #train_set, valid_set, test_set format: tuple(input, target)
-    #input is an numpy.ndarray of 2 dimensions (a matrix)
-    #witch row's correspond to an example. target is a
-    #numpy.ndarray of 1 dimensions (vector)) that have the same length as
-    #the number of rows in the input. It should give the target
-    #target to the example with the same index in the input.
-
-    def shared_dataset(data_xy, borrow=True):
-        """ Function that loads the dataset into shared variables
-
-        The reason we store our dataset in shared variables is to allow
-        Theano to copy it into the GPU memory (when code is run on GPU).
-        Since copying data into the GPU is slow, copying a minibatch everytime
-        is needed (the default behaviour if the data is not in a shared
-        variable) would lead to a large decrease in performance.
-        """
-        data_x, data_y = data_xy
-        shared_x = theano.shared(numpy.asarray(data_x,
-                                               dtype=theano.config.floatX),
-                                 borrow=borrow)
-        shared_y = theano.shared(numpy.asarray(data_y,
-                                               dtype=numpy.int32),
-                                 borrow=borrow)
-        # When storing data on the GPU it has to be stored as floats
-        # therefore we will store the labels as ``floatX`` as well
-        # (``shared_y`` does exactly that).
-        return shared_x, shared_y
-
-    test_set_x, test_set_y = shared_dataset(test_set)
-    valid_set_x, valid_set_y = shared_dataset(valid_set)
-    train_set_x, train_set_y = shared_dataset(train_set)
-
-    rval = [(train_set_x, train_set_y), (valid_set_x, valid_set_y),
-            (test_set_x, test_set_y)]
-    return rval
-
-
-# endregion
-
-# region HiddenLayer
 class HiddenLayer(object):
-    def __init__(self, rng, input, n_in, n_out, d, prevHiddenLayer=None, W=None, b=None, S=None, G=None, B=None,
-                 activation=T.nnet.nnet.sigmoid):
+    def __init__(self, rng, input, n_in, n_out, d, H, PI, W=None, b=None,
+                 activation=T.tanh):
         """
         Typical hidden layer of a MLP: units are fully-connected and have
         sigmoidal activation function. Weight matrix W is of shape (n_in,n_out)
@@ -130,20 +65,10 @@ class HiddenLayer(object):
 
         :type activation: theano.Op or function
         :param activation: Non linearity to be applied in the hidden
-                           layer
+        layer
         """
         self.input = input
-        self.d = d
-        self.n_out = n_out
-        self.prevHiddenLayer = prevHiddenLayer
-
-        layer_no = 1
-        prev = prevHiddenLayer
-        while prev is not None:
-            layer_no += 1
-            prev = prev.prevHiddenLayer
-
-        dbg_name = lambda s: s + '_l' + str(layer_no)
+        # end-snippet-1
 
         # `W` is initialized with `W_values` which is uniformely sampled
         # from sqrt(-6./(n_in+n_hidden)) and sqrt(6./(n_in+n_hidden))
@@ -151,7 +76,7 @@ class HiddenLayer(object):
         # the output of uniform if converted using asarray to dtype
         # theano.config.floatX so that the code is runable on GPU
         # Note : optimal initialization of weights is dependent on the
-        # activation function used (among other things).
+        #        activation function used (among other things).
         #        For example, results presented in [Xavier10] suggest that you
         #        should use 4 times larger initial weights for sigmoid
         #        compared to tanh
@@ -162,98 +87,66 @@ class HiddenLayer(object):
                 rng.uniform(
                     low=-numpy.sqrt(6. / (n_in + n_out)),
                     high=numpy.sqrt(6. / (n_in + n_out)),
-                    size=(n_in, n_out)
+                    size=(d, n_out)
                 ),
                 dtype=theano.config.floatX
             )
             if activation == theano.tensor.nnet.sigmoid:
                 W_values *= 4
 
-            W = theano.shared(value=W_values, name=dbg_name('W'), borrow=True)
+            W = theano.shared(value=W_values, name='W', borrow=True)
 
-        if G is None:
-            diag_values = numpy.asarray(rng.normal(0, 1, size=d))
-            G_values = numpy.zeros((d, d))
-            for i in xrange(d):
-                G_values[i, i] = diag_values[i]
-            G = theano.shared(value=G_values, name=dbg_name('G'), borrow=True)
-        if B is None:
-            diag_values = rng.randint(0, 2, d)
-            B_values = numpy.zeros((d, d))
-            for i in xrange(d):
-                B_values[i, i] = -1 if diag_values[i] == 0 else 1
-            B = theano.shared(value=B_values, name=dbg_name('B'), borrow=True)
-        if S is None:
-            S_values = numpy.zeros((d, d))
-            for i in xrange(d):
-                s_i = ((2 * numpy.pi) ** (-d / 2)) * (
-                    1 / ((numpy.pi ** (d / 2)) / gamma((d / float(2)) + 1)))
-                S_values[i, i] = s_i * (numpy.linalg.norm(G_values, ord='fro') ** (-1 / 2))
-            S = theano.shared(value=S_values, name=dbg_name('S'), borrow=True)
+        if b is None:
+            b_values = numpy.zeros((d,), dtype=theano.config.floatX)
+            b = theano.shared(value=b_values, name='b', borrow=True)
 
         self.W = W
+        self.b = b
+
+        diag_values = numpy.asarray(rng.normal(0, 1, size=d))
+        G_values = numpy.zeros((d, d))
+        for i in xrange(d):
+            G_values[i, i] = diag_values[i]
+        G = theano.shared(value=G_values, name='G', borrow=True)
+       
+        diag_values = rng.randint(0, 1, size=d)
+        B_values = numpy.zeros((d, d))
+        for i in xrange(d):
+            B_values[i, i] = diag_values[i] if diag_values[i] == 1 else -1
+        B = theano.shared(value=B_values, name='B', borrow=True)
+       
+        S_values = numpy.zeros((d, d))
+        g_frob = (1 / numpy.sqrt((numpy.linalg.norm(G.get_value(borrow=True), ord='fro'))))
+        area = (1.0 / numpy.sqrt(d * numpy.pi)) * ((2 * numpy.pi * numpy.exp(1)) / d) ** (d / 2)
+        #s_i = ((2.0 * numpy.pi) ** (-d / 2.0)) * (1.0 / area)
+        s_i = 0.001
+        for i in xrange(d):
+            S_values[i, i] = s_i * g_frob
+        S = theano.shared(value=S_values, name='S', borrow=True)
+
         self.S = S
-        self.B = B
         self.G = G
+        self.B = B
 
-        H_values = hadamard(d, dtype=numpy.int)
-        H = theano.shared(value=H_values, name='H', borrow=True)
-        self.H = H
+        # hyperparams
+        sigma = 0.01
+        m = 0.1
+        phi_exp = (1 / (sigma * numpy.sqrt(d))) * reduce(T.dot, [S, H, G, PI, H, B, T.transpose(input)])
+        var = phi_exp
+        var = theano.printing.Print("var = ")(var)
+        phi = var-var+(1 / numpy.sqrt(m)) * T.exp(1j * phi_exp)
 
-        perm_matrix_values = numpy.identity(d)  # generated by shuffling the columns of the dxd identity matrix
-        numpy.random.shuffle(numpy.transpose(perm_matrix_values))
-        perm_matrix = theano.shared(value=perm_matrix_values, name='perm_matrix', borrow=True)
-        self.perm_matrix = perm_matrix
-
-        # calculate output
-        sigma = 1.0
-        d = self.d
-        m = self.n_out
-        PI = perm_matrix
-        phi_inner = 1j * ((1 / sigma * T.sqrt(d)) * T.dot(S, T.dot(H, T.dot(G, T.dot(PI, T.dot(H, T.dot(B, input)))))))
-        phi = 1 / T.sqrt(m) * T.exp(phi_inner)
-        res = activation(T.dot(self.W, T.imag(phi)))
-        self.output = res
-
-        self.y_pred = self.output
+        lin_output = T.dot(T.transpose(T.imag(phi)), self.W) + self.b
+        self.output = (
+            lin_output if activation is None
+            else activation(lin_output)
+        )
 
         # parameters of the model
-        self.params = [self.W, self.S, self.B, self.G]
-
-    def errors(self, y):
-        """Return a float representing the number of errors in the minibatch
-        over the total number of examples of the minibatch ; zero one
-        loss over the size of the minibatch
-
-        :type y: theano.tensor.TensorType
-        :param y: corresponds to a vector that gives for each example the
-                  correct label
-        """
-
-        # check if y has same dimension of y_pred
-        if y.ndim != self.y_pred.ndim:
-            raise TypeError(
-                'y should have the same shape as self.y_pred',
-                ('y', y.type, 'y_pred', self.y_pred.type)
-            )
-        # check if y is of the correct datatype
-        if y.dtype.startswith('int'):
-            # the T.neq operator returns a vector of 0s and 1s, where 1
-            # represents a mistake in prediction
-            return T.mean(T.neq(self.y_pred, y))
-        else:
-            raise NotImplementedError()
-
-    def cross_entropy_cost(self, y):
-        result, updates = theano.scan(
-            fn=lambda n: y[n] * T.log(self.output) + (1 - y[n]) * T.log(1 - self.output),
-            sequences=[T.arange(y.shape[0])])
-        return -T.sum(result)
+        self.params = [self.W, self.b]
 
 
-#endregion
-
-#region MLP
+# start-snippet-2
 class MLP(object):
     """Multi-Layer Perceptron Class
 
@@ -265,7 +158,7 @@ class MLP(object):
     class).
     """
 
-    def __init__(self, rng, input, n_in, n_out, d):
+    def __init__(self, rng, input, n_in, n_hidden, n_out, d):
         """Initialize the parameters for the multilayer perceptron
 
         :type rng: numpy.random.RandomState
@@ -287,6 +180,21 @@ class MLP(object):
         which the labels lie
 
         """
+        self.input = input
+        self.n_hidden = n_hidden
+        self.n_in = n_in
+        self.n_out = n_out
+        self.d = d
+
+        # generate ffnnet parameters perm_matrix (random permutation matrix) and H (hadamard matrix)
+        H_values = hadamard(d, dtype=numpy.int)
+        H = theano.shared(value=H_values, name='H', borrow=True)
+        self.H = H
+
+        perm_matrix_values = numpy.identity(d)  # generated by shuffling the columns of the dxd identity matrix
+        numpy.random.shuffle(numpy.transpose(perm_matrix_values))
+        perm_matrix = theano.shared(value=perm_matrix_values, name='PI', borrow=True)
+        self.perm_matrix = perm_matrix
 
         # Since we are dealing with a one hidden layer MLP, this will translate
         # into a HiddenLayer with a tanh activation function connected to the
@@ -296,56 +204,52 @@ class MLP(object):
             rng=rng,
             input=input,
             n_in=n_in,
-            n_out=n_out,
+            n_out=n_hidden,
             d=d,
-            activation=T.nnet.nnet.sigmoid
+            H=H,
+            PI=perm_matrix,
+            activation=T.tanh,
         )
 
-        self.outputLayer = HiddenLayer(
-            rng=rng,
+        # The logistic regression layer gets as input the hidden units
+        # of the hidden layer
+        self.logRegressionLayer = LogisticRegression(
             input=self.hiddenLayer.output,
-            n_in=n_in,
-            n_out=n_out,
-            d=d,
-            prevHiddenLayer=self.hiddenLayer,
-            activation=T.nnet.nnet.sigmoid
+            n_in=n_hidden,
+            n_out=n_out
         )
-
         # end-snippet-2 start-snippet-3
         # L1 norm ; one regularization option is to enforce L1 norm to
         # be small
         self.L1 = (
             abs(self.hiddenLayer.W).sum()
-            + abs(self.outputLayer.W).sum()
+            + abs(self.logRegressionLayer.W).sum()
         )
 
         # square of L2 norm ; one regularization option is to enforce
         # square of L2 norm to be small
         self.L2_sqr = (
             (self.hiddenLayer.W ** 2).sum()
-            + (self.outputLayer.W ** 2).sum()
+            + (self.logRegressionLayer.W ** 2).sum()
         )
 
         # negative log likelihood of the MLP is given by the negative
         # log likelihood of the output of the model, computed in the
         # logistic regression layer
-        self.cross_entropy_cost = (
-            self.outputLayer.cross_entropy_cost
+        self.negative_log_likelihood = (
+            self.logRegressionLayer.negative_log_likelihood
         )
         # same holds for the function computing the number of errors
-        self.errors = self.outputLayer.errors
+        self.errors = self.logRegressionLayer.errors
 
         # the parameters of the model are the parameters of the two layer it is
         # made out of
-        self.params = self.outputLayer.params  #self.hiddenLayer.params + self.outputLayer.params
+        self.params = self.hiddenLayer.params + self.logRegressionLayer.params
         # end-snippet-3
 
 
-#endregion
-
-#region test_mlp
 def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
-             dataset='iris.pkl', n_hidden=5):
+             dataset='mnist.pkl.gz', batch_size=20, n_hidden=1024):
     """
     Demonstrate stochastic gradient descent optimization for a multilayer
     perceptron
@@ -369,15 +273,20 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
 
     :type dataset: string
     :param dataset: the path of the MNIST dataset file from
-                 http://www.iro.umontreal.ca/~lisa/deep/data/mnist/mnist.pkl.gz
+    http://www.iro.umontreal.ca/~lisa/deep/data/mnist/mnist.pkl.gz
 
 
-   """
+    """
     datasets = load_data(dataset)
 
     train_set_x, train_set_y = datasets[0]
     valid_set_x, valid_set_y = datasets[1]
     test_set_x, test_set_y = datasets[2]
+
+    # compute number of minibatches for training, validation and testing
+    n_train_batches = train_set_x.get_value(borrow=True).shape[0] / batch_size
+    n_valid_batches = valid_set_x.get_value(borrow=True).shape[0] / batch_size
+    n_test_batches = test_set_x.get_value(borrow=True).shape[0] / batch_size
 
     n_train = train_set_x.get_value(borrow=True).shape[0]
     n_test = test_set_x.get_value(borrow=True).shape[0]
@@ -394,24 +303,26 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
         valid_set_x.get_value(borrow=True).resize((n_valid, d))
         test_set_x.get_value(borrow=True).resize((n_test, d))
 
-    # #####################
+    ######################
     # BUILD ACTUAL MODEL #
     ######################
     print '... building the model'
 
     # allocate symbolic variables for the data
     index = T.lscalar()  # index to a [mini]batch
-    x = T.fvector('x')
-    y = T.ivector('y')
+    x = theano.printing.Print('x =')(T.matrix('x'))  # the data is presented as rasterized images
+    y = theano.printing.Print('y =')(T.ivector('y'))  # the labels are presented as 1D vector of
+    # [int] labels
 
-    rng = numpy.random.RandomState(1234)  # TODO
+    rng = numpy.random.RandomState(1234)
 
     # construct the MLP class
     classifier = MLP(
         rng=rng,
         input=x,
-        n_in=4,
-        n_out=3,
+        n_in=28 * 28,
+        n_hidden=n_hidden,
+        n_out=10,
         d=d
     )
 
@@ -420,7 +331,7 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
     # the model plus the regularization terms (L1 and L2); cost is expressed
     # here symbolically
     cost = (
-        classifier.cross_entropy_cost(y)
+        classifier.negative_log_likelihood(y)
         + L1_reg * classifier.L1
         + L2_reg * classifier.L2_sqr
     )
@@ -429,17 +340,25 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
     # compiling a Theano function that computes the mistakes that are made
     # by the model on a minibatch
     test_model = theano.function(
-        inputs=[x, y],
-        outputs=classifier.errors(y)
+        inputs=[index],
+        outputs=classifier.errors(y),
+        givens={
+            x: test_set_x[index * batch_size:(index + 1) * batch_size],
+            y: test_set_y[index * batch_size:(index + 1) * batch_size]
+        }
     )
 
     validate_model = theano.function(
-        inputs=[x, y],
-        outputs=classifier.errors(y)
+        inputs=[index],
+        outputs=classifier.errors(y),
+        givens={
+            x: valid_set_x[index * batch_size:(index + 1) * batch_size],
+            y: valid_set_y[index * batch_size:(index + 1) * batch_size]
+        }
     )
 
     # start-snippet-5
-    # compute the gradient of cost with respect to theta (stored in params)
+    # compute the gradient of cost with respect to theta (sotred in params)
     # the resulting gradients will be stored in a list gparams
     gparams = [T.grad(cost, param) for param in classifier.params]
 
@@ -459,9 +378,13 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
     # in the same time updates the parameter of the model based on the rules
     # defined in `updates`
     train_model = theano.function(
-        inputs=[x, y],
+        inputs=[index],
         outputs=cost,
-        updates=updates
+        updates=updates,
+        givens={
+            x: train_set_x[index * batch_size: (index + 1) * batch_size],
+            y: train_set_y[index * batch_size: (index + 1) * batch_size]
+        }
     )
     # end-snippet-5
 
@@ -472,9 +395,15 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
 
     # early-stopping parameters
     patience = 10000  # look as this many examples regardless
-    patience_increase = 2  # wait this much longer when a new best is found
-    improvement_threshold = 0.995  # a relative improvement of this much is considered significant
-    validation_frequency = patience / 2
+    patience_increase = 2  # wait this much longer when a new best is
+    # found
+    improvement_threshold = 0.995  # a relative improvement of this much is
+    # considered significant
+    validation_frequency = min(n_train_batches, patience / 2)
+    # go through this many
+    # minibatche before checking the network
+    # on the validation set; in this case we
+    # check every epoch
 
     best_validation_loss = numpy.inf
     best_iter = 0
@@ -485,25 +414,25 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
     done_looping = False
 
     while (epoch < n_epochs) and (not done_looping):
-        epoch += 1
-        for idx in xrange(n_train):
-            print "Training on idx " + str(idx)
-            avg_cost = train_model(train_set_x[idx], train_set_y[idx])
+        epoch = epoch + 1
+        for minibatch_index in xrange(n_train_batches):
 
+            minibatch_avg_cost = train_model(minibatch_index)
             # iteration number
-            iter = (epoch - 1) + idx
+            iter = (epoch - 1) * n_train_batches + minibatch_index
 
             if (iter + 1) % validation_frequency == 0:
                 # compute zero-one loss on validation set
-                validation_losses = [validate_model(valid_set_x[i], valid_set_y[i]) for i in xrange(n_valid)]
+                validation_losses = [validate_model(i) for i
+                                     in xrange(n_valid_batches)]
                 this_validation_loss = numpy.mean(validation_losses)
 
                 print(
-                    'epoch %i, idx %i/%i, validation error %f %%' %
+                    'epoch %i, minibatch %i/%i, validation error %f %%' %
                     (
                         epoch,
-                        idx + 1,
-                        n_train,
+                        minibatch_index + 1,
+                        n_train_batches,
                         this_validation_loss * 100.
                     )
                 )
@@ -512,8 +441,8 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
                 if this_validation_loss < best_validation_loss:
                     #improve patience if loss improvement is good enough
                     if (
-                                this_validation_loss < best_validation_loss *
-                                improvement_threshold
+                            this_validation_loss < best_validation_loss *
+                            improvement_threshold
                     ):
                         patience = max(patience, iter * patience_increase)
 
@@ -521,13 +450,13 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
                     best_iter = iter
 
                     # test it on the test set
-                    test_losses = [test_model(test_set_x[i], test_set_y[i]) for i
-                                   in xrange(n_test)]
+                    test_losses = [test_model(i) for i
+                                   in xrange(n_test_batches)]
                     test_score = numpy.mean(test_losses)
 
-                    print(('     epoch %i, idx %i/%i, test error of '
+                    print(('     epoch %i, minibatch %i/%i, test error of '
                            'best model %f %%') %
-                          (epoch, idx + 1, n_train,
+                          (epoch, minibatch_index + 1, n_train_batches,
                            test_score * 100.))
 
             if patience <= iter:
@@ -545,4 +474,3 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
 
 if __name__ == '__main__':
     test_mlp()
-#endregion
