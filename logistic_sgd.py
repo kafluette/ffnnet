@@ -221,6 +221,10 @@ def load_data(dataset):
         variable) would lead to a large decrease in performance.
         """
         data_x, data_y = data_xy
+	# I have totally hard coded this here. TODO: Fix this!
+	x = numpy.zeros((numpy.size(data_x,axis=0),1024))
+	x[:,:-(numpy.size(x,axis=1)-numpy.size(data_x,axis=1))] = data_x
+	data_x = x
         shared_x = theano.shared(numpy.asarray(data_x,
                                                dtype=theano.config.floatX),
                                  borrow=borrow)
