@@ -36,11 +36,12 @@ import theano.tensor as T
 
 from logistic_sgd import LogisticRegression, load_data
 
-#theano.config.optimizer = 'None'
-#theano.config.exception_verbosity = 'low'
+# theano.config.optimizer = 'None'
+# theano.config.exception_verbosity = 'low'
 
 print_on = False
 old_method = False
+
 
 class HiddenLayer(object):
     def __init__(self, rng, input, n_in, n_out, d, H, PI, W=None, b=None,
@@ -111,18 +112,18 @@ class HiddenLayer(object):
         for i in xrange(d):
             G_values[i, i] = diag_values[i]
         G = theano.shared(value=G_values, name='G', borrow=True)
-       
+
         diag_values = rng.randint(0, 1, size=d)
         B_values = numpy.zeros((d, d))
         for i in xrange(d):
             B_values[i, i] = diag_values[i] if diag_values[i] == 1 else -1
         B = theano.shared(value=B_values, name='B', borrow=True)
-       
+
         S_values = numpy.zeros((d, d))
         g_frob = (1 / numpy.sqrt((numpy.linalg.norm(G.get_value(borrow=True), ord='fro'))))
         area = (1.0 / numpy.sqrt(d * numpy.pi)) * ((2 * numpy.pi * numpy.exp(1)) / d) ** (d / 2)
         s_i = ((2.0 * numpy.pi) ** (-d / 2.0)) * (1.0 / area)
-        #s_i = 0.001
+        # s_i = 0.001
         for i in xrange(d):
             S_values[i, i] = s_i * g_frob
         S = theano.shared(value=S_values, name='S', borrow=True)
@@ -134,34 +135,34 @@ class HiddenLayer(object):
         # hyperparams
         sigma = 0.01
         m = 0.1
-	if print_on:
-        	input = theano.printing.Print("input = ")(input)
-        var = reduce(T.dot, [S, H, G, PI, H, B,T.transpose(input)])
-	if print_on:
-        	var = theano.printing.Print("var = ")(var)
+        if print_on:
+            input = theano.printing.Print("input = ")(input)
+        var = reduce(T.dot, [S, H, G, PI, H, B, T.transpose(input)])
+        if print_on:
+            var = theano.printing.Print("var = ")(var)
         phi_exp = (1 / (sigma * numpy.sqrt(d))) * var
-        phi = 1/numpy.sqrt(m)*T.sin(phi_exp) # M*e^(jtheta) = Mcos(theta) + jMsin(theta), so don't need (1 / numpy.sqrt(m)) * T.exp(1j * phi_exp)
-	if print_on:
-        	phi = theano.printing.Print("phi = ")(phi)
+        phi = 1/numpy.sqrt(m)*T.sin(phi_exp)  # M*e^(jtheta) = Mcos(theta) + jMsin(theta), so don't need (1 / numpy.sqrt(m)) * T.exp(1j * phi_exp)
+        if print_on:
+            phi = theano.printing.Print("phi = ")(phi)
 
-	if old_method:
-        	lin_output = T.dot(input, self.W) + self.b
-	else:
-	        lin_output = T.dot(T.transpose(phi), self.W) + self.b
-	if print_on:
-        	lin_output = theano.printing.Print("lin_output = ")(lin_output)
+        if old_method:
+            lin_output = T.dot(input, self.W) + self.b
+        else:
+            lin_output = T.dot(T.transpose(phi), self.W) + self.b
+        if print_on:
+            lin_output = theano.printing.Print("lin_output = ")(lin_output)
         self.output = (
             lin_output if activation is None
             else activation(lin_output)
         )
-	if print_on:
-        	self.output = theano.printing.Print("self.output = ")(self.output)
+        if print_on:
+            self.output = theano.printing.Print("self.output = ")(self.output)
 
         # parameters of the model
-	if old_method:
-        	self.params = [self.W, self.b]
-	else:
-	        self.params = [self.W, self.b, self.B, self.G]
+        if old_method:
+            self.params = [self.W, self.b]
+        else:
+            self.params = [self.W, self.b, self.B, self.G]
 
 
 # start-snippet-2
@@ -295,10 +296,10 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
 
 
     """
-    datasets = load_data(dataset,n_hidden)
+    datasets = load_data(dataset, n_hidden)
 
     train_set_x, train_set_y = datasets[0]
-    print 'size of x ',numpy.size(train_set_x.eval(),axis=0),numpy.size(train_set_x.eval(),axis=1)
+    print 'size of x ', numpy.size(train_set_x.eval(), axis=0), numpy.size(train_set_x.eval(), axis=1)
     print train_set_y.eval()
     valid_set_x, valid_set_y = datasets[1]
     test_set_x, test_set_y = datasets[2]
@@ -308,17 +309,16 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
     n_valid_batches = valid_set_x.get_value(borrow=True).shape[0] / batch_size
     n_test_batches = test_set_x.get_value(borrow=True).shape[0] / batch_size
 
-    n_train = train_set_x.get_value(borrow=True).shape[0]
-    n_test = test_set_x.get_value(borrow=True).shape[0]
-    n_valid = valid_set_x.get_value(borrow=True).shape[0]
-
     # for ffnnet stuff to work, the input size must be a power of 2
     # so round up the input size to the next highest power of 2 and pad with zeros as needed
-    #cur_l = numpy.log2(train_set_x.get_value(borrow=True).shape[1])
-    #next_l = int(numpy.ceil(cur_l))
-    #d = 2 ** next_l
-    #pad_size = d - n_hidden
-    #if pad_size > 0:
+    # n_train = train_set_x.get_value(borrow=True).shape[0]
+    # n_test = test_set_x.get_value(borrow=True).shape[0]
+    # n_valid = valid_set_x.get_value(borrow=True).shape[0]
+    # cur_l = numpy.log2(train_set_x.get_value(borrow=True).shape[1])
+    # next_l = int(numpy.ceil(cur_l))
+    # d = 2 ** next_l
+    # pad_size = d - n_hidden
+    # if pad_size > 0:
     #    train_set_x.get_value(borrow=True).resize((n_train, d))
     #    valid_set_x.get_value(borrow=True).resize((n_valid, d))
     #    test_set_x.get_value(borrow=True).resize((n_test, d))
@@ -343,7 +343,7 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
         n_in=n_hidden,
         n_hidden=n_hidden,
         n_out=3,
-	d=n_hidden
+        d=n_hidden
     )
 
     # start-snippet-4
@@ -437,7 +437,9 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
         epoch = epoch + 1
         for minibatch_index in xrange(n_train_batches):
 
-            minibatch_avg_cost = train_model(minibatch_index)
+            # minibatch_avg_cost = train_model(minibatch_index)
+            train_model(minibatch_index)
+
             # iteration number
             iter = (epoch - 1) * n_train_batches + minibatch_index
 
@@ -459,7 +461,7 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
 
                 # if we got the best validation score until now
                 if this_validation_loss < best_validation_loss:
-                    #improve patience if loss improvement is good enough
+                    # improve patience if loss improvement is good enough
                     if (
                             this_validation_loss < best_validation_loss *
                             improvement_threshold
@@ -493,4 +495,4 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
 
 
 if __name__ == '__main__':
-    test_mlp(dataset="iris.pkl.gz",n_hidden=8)
+    test_mlp(dataset="iris.pkl.gz", n_hidden=8)
