@@ -39,6 +39,9 @@ from logistic_sgd import LogisticRegression, load_data
 #theano.config.optimizer = 'None'
 #theano.config.exception_verbosity = 'low'
 
+print_on = False
+old_method = False
+
 class HiddenLayer(object):
     def __init__(self, rng, input, n_in, n_out, d, H, PI, W=None, b=None,
                  activation=T.tanh):
@@ -118,8 +121,8 @@ class HiddenLayer(object):
         S_values = numpy.zeros((d, d))
         g_frob = (1 / numpy.sqrt((numpy.linalg.norm(G.get_value(borrow=True), ord='fro'))))
         area = (1.0 / numpy.sqrt(d * numpy.pi)) * ((2 * numpy.pi * numpy.exp(1)) / d) ** (d / 2)
-        #s_i = ((2.0 * numpy.pi) ** (-d / 2.0)) * (1.0 / area)
-        s_i = 0.001
+        s_i = ((2.0 * numpy.pi) ** (-d / 2.0)) * (1.0 / area)
+        #s_i = 0.001
         for i in xrange(d):
             S_values[i, i] = s_i * g_frob
         S = theano.shared(value=S_values, name='S', borrow=True)
@@ -131,20 +134,34 @@ class HiddenLayer(object):
         # hyperparams
         sigma = 0.01
         m = 0.1
+	if print_on:
+        	input = theano.printing.Print("input = ")(input)
         var = reduce(T.dot, [S, H, G, PI, H, B,T.transpose(input)])
-        #var = theano.printing.Print("var = ")(var)
+	if print_on:
+        	var = theano.printing.Print("var = ")(var)
         phi_exp = (1 / (sigma * numpy.sqrt(d))) * var
         phi = 1/numpy.sqrt(m)*T.sin(phi_exp) # M*e^(jtheta) = Mcos(theta) + jMsin(theta), so don't need (1 / numpy.sqrt(m)) * T.exp(1j * phi_exp)
-        #phi = theano.printing.Print("phi = ")(phi)
+	if print_on:
+        	phi = theano.printing.Print("phi = ")(phi)
 
-        lin_output = T.dot(T.transpose(phi), self.W) + self.b
+	if old_method:
+        	lin_output = T.dot(input, self.W) + self.b
+	else:
+	        lin_output = T.dot(T.transpose(phi), self.W) + self.b
+	if print_on:
+        	lin_output = theano.printing.Print("lin_output = ")(lin_output)
         self.output = (
             lin_output if activation is None
             else activation(lin_output)
         )
+	if print_on:
+        	self.output = theano.printing.Print("self.output = ")(self.output)
 
         # parameters of the model
-        self.params = [self.W, self.b]
+	if old_method:
+        	self.params = [self.W, self.b]
+	else:
+	        self.params = [self.W, self.b, self.B, self.G]
 
 
 # start-snippet-2
@@ -278,10 +295,11 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
 
 
     """
-    datasets = load_data(dataset)
+    datasets = load_data(dataset,n_hidden)
 
     train_set_x, train_set_y = datasets[0]
-    #print 'here',numpy.size(train_set_x.eval(),axis=1)
+    print 'size of x ',numpy.size(train_set_x.eval(),axis=0),numpy.size(train_set_x.eval(),axis=1)
+    print train_set_y.eval()
     valid_set_x, valid_set_y = datasets[1]
     test_set_x, test_set_y = datasets[2]
 
@@ -296,14 +314,14 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
 
     # for ffnnet stuff to work, the input size must be a power of 2
     # so round up the input size to the next highest power of 2 and pad with zeros as needed
-    cur_l = numpy.log2(train_set_x.get_value(borrow=True).shape[1])
-    next_l = int(numpy.ceil(cur_l))
-    d = 2 ** next_l
-    pad_size = d - n_hidden
-    if pad_size > 0:
-        train_set_x.get_value(borrow=True).resize((n_train, d))
-        valid_set_x.get_value(borrow=True).resize((n_valid, d))
-        test_set_x.get_value(borrow=True).resize((n_test, d))
+    #cur_l = numpy.log2(train_set_x.get_value(borrow=True).shape[1])
+    #next_l = int(numpy.ceil(cur_l))
+    #d = 2 ** next_l
+    #pad_size = d - n_hidden
+    #if pad_size > 0:
+    #    train_set_x.get_value(borrow=True).resize((n_train, d))
+    #    valid_set_x.get_value(borrow=True).resize((n_valid, d))
+    #    test_set_x.get_value(borrow=True).resize((n_test, d))
 
     ######################
     # BUILD ACTUAL MODEL #
@@ -322,10 +340,10 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
     classifier = MLP(
         rng=rng,
         input=x,
-        n_in=28 * 28,
+        n_in=n_hidden,
         n_hidden=n_hidden,
-        n_out=10,
-        d=d
+        n_out=3,
+	d=n_hidden
     )
 
     # start-snippet-4
@@ -475,4 +493,4 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
 
 
 if __name__ == '__main__':
-    test_mlp()
+    test_mlp(dataset="iris.pkl.gz",n_hidden=8)

@@ -7,6 +7,23 @@ import cPickle
 rawdata = [row for row in csv.reader(open('iris.data', 'rb')) if len(row) > 0]
 
 # partition into thirds
+inxs = numpy.random.permutation(len(rawdata))
+rawdata = [rawdata[i] for i in inxs]
+maxs = []
+mins = []
+for i in range(len(rawdata)):
+	for j in range(len(rawdata[0])-1):
+		rawdata[i][j] = float(rawdata[i][j])
+		if i == 0:
+			maxs.append(rawdata[i][j])
+			mins.append(rawdata[i][j])
+		else:
+			maxs[j] = max(maxs[j],rawdata[i][j])
+			mins[j] = min(mins[j],rawdata[i][j])
+for i in range(len(rawdata)):
+	for j in range(len(rawdata[0])-1):
+		rawdata[i][j] = (rawdata[i][j]-mins[j])/maxs[j]
+
 rtrain = rawdata[:50]
 rvalid = rawdata[51:100]
 rtest = rawdata[101:]

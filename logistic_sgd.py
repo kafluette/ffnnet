@@ -45,6 +45,7 @@ import numpy
 import theano
 import theano.tensor as T
 
+print_on = False
 
 class LogisticRegression(object):
     """Multi-class Logistic Regression Class
@@ -73,20 +74,31 @@ class LogisticRegression(object):
         """
         # start-snippet-1
         # initialize with 0 the weights W as a matrix of shape (n_in, n_out)
+	rng = numpy.random.RandomState(1234)
         self.W = theano.shared(
-            value=numpy.zeros(
-                (n_in, n_out),
-                dtype=theano.config.floatX
+            value = rng.uniform(
+                    low=-numpy.sqrt(6. / (n_in + n_out)),
+                    high=numpy.sqrt(6. / (n_in + n_out)),
+                    size=(n_in, n_out)
             ),
+#            value=numpy.zeros(
+#                (n_in, n_out),
+#                dtype=theano.config.floatX
+#            ),
             name='W',
             borrow=True
         )
         # initialize the baises b as a vector of n_out 0s
         self.b = theano.shared(
-            value=numpy.zeros(
-                (n_out,),
-                dtype=theano.config.floatX
+            value = rng.uniform(
+                    low=-numpy.sqrt(6. / (n_in + n_out)),
+                    high=numpy.sqrt(6. / (n_in + n_out)),
+                    size=(n_out,)
             ),
+            #value=numpy.zeros(
+            #    (n_out,),
+            #    dtype=theano.config.floatX
+            #),
             name='b',
             borrow=True
         )
@@ -99,7 +111,19 @@ class LogisticRegression(object):
         # x is a matrix where row-j  represents input training sample-j
         # b is a vector where element-k represent the free parameter of hyper
         # plain-k
-        self.p_y_given_x = T.nnet.softmax(T.dot(input, self.W) + self.b)
+	if print_on:
+ 		input = theano.printing.Print("input = ")(input)
+        	b = theano.printing.Print("self.b = ")(self.b)
+	        W = theano.printing.Print("self.W = ")(self.W)
+	else:
+        	b = self.b
+	        W = self.W
+	pre_softmax = T.dot(input, W) + b
+	if print_on:
+	        pre_softmax = theano.printing.Print("pre_softmax = ")(pre_softmax)
+        self.p_y_given_x = T.nnet.softmax(pre_softmax)
+	if print_on:
+        	self.p_y_given_x = theano.printing.Print("self.p_y_given_x = ")(self.p_y_given_x)
 
         # symbolic description of how to compute prediction as class whose
         # probability is maximal
@@ -166,7 +190,7 @@ class LogisticRegression(object):
             raise NotImplementedError()
 
 
-def load_data(dataset):
+def load_data(dataset,n_hidden):
     ''' Loads the dataset
 
     :type dataset: string
@@ -221,9 +245,13 @@ def load_data(dataset):
         variable) would lead to a large decrease in performance.
         """
         data_x, data_y = data_xy
-	# I have totally hard coded this here. TODO: Fix this!
-	x = numpy.zeros((numpy.size(data_x,axis=0),1024))
-	x[:,:-(numpy.size(x,axis=1)-numpy.size(data_x,axis=1))] = data_x
+	pad_size = n_hidden - numpy.size(data_x,axis=1)
+        #train_set_x.get_value(borrow=True).resize((n_train, d))
+        #valid_set_x.get_value(borrow=True).resize((n_valid, d))
+        #test_set_x.get_value(borrow=True).resize((n_test, d))
+
+	x = numpy.zeros((numpy.size(data_x,axis=0),n_hidden))
+	x[:,:-pad_size] = data_x
 	data_x = x
         shared_x = theano.shared(numpy.asarray(data_x,
                                                dtype=theano.config.floatX),
