@@ -94,7 +94,7 @@ class HiddenLayer(object):
                 ),
                 dtype=theano.config.floatX
             )
-            if activation == theano.tensor.nnet.sigmoid:
+            if activation == T.nnet.sigmoid:
                 W_values *= 4
 
             W = theano.shared(value=W_values, name='W', borrow=True)
@@ -230,7 +230,7 @@ class MLP(object):
             d=d,
             H=H,
             PI=perm_matrix,
-            activation=theano.tensor.nnet.sigmoid
+            activation=T.nnet.sigmoid if not old_method else T.tanh
         )
 
         # The logistic regression layer gets as input the hidden units
