@@ -319,6 +319,8 @@ def sgd_optimization_mnist(learning_rate=0.13, n_epochs=1000,
     http://www.iro.umontreal.ca/~lisa/deep/data/mnist/mnist.pkl.gz
 
     """
+    raise NotImplementedError()
+        
     datasets = load_data(dataset)
 
     train_set_x, train_set_y = datasets[0]
