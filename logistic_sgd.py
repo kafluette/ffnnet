@@ -131,7 +131,7 @@ class LogisticRegression(object):
             G = theano.printing.Print("logreg G = ")(G)
             B = theano.printing.Print("logreg B = ")(B)
         id = numpy.identity(d)
-        var = reduce(T.dot, [S, H, G, PI, H, B, T.transpose(input)])
+        var = reduce(T.dot, [id*S, H, id*G, PI, H, id*B, T.transpose(input)])
         if print_on:
             var = theano.printing.Print("logreg var = ")(var)
         phi_exp = (1 / (sigma * numpy.sqrt(d))) * var
