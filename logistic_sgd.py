@@ -59,7 +59,7 @@ class LogisticRegression(object):
     """
 
     def __init__(self, rng, input, n_in, n_out, d, H, PI, W=None, b=None,
-                 activation=T.tanh):
+                 activation=T.nnet.sigmoid):
         """ Initialize the parameters of the logistic regression
 
         :type input: theano.tensor.TensorType
@@ -84,7 +84,7 @@ class LogisticRegression(object):
                 ),
                 dtype=theano.config.floatX
             )
-            if activation == theano.tensor.nnet.sigmoid:
+            if activation == T.tanh:
                 W_values *= 4
 
             W = theano.shared(value=W_values, name='W', borrow=True)
@@ -135,14 +135,14 @@ class LogisticRegression(object):
         if print_on:
             var = theano.printing.Print("logreg var = ")(var)
         phi_exp = (1 / (sigma * numpy.sqrt(d))) * var
-        phi = 1 / numpy.sqrt(m)*T.sin(phi_exp)  # M*e^(jtheta) = Mcos(theta) + jMsin(theta), so don't need (1 / numpy.sqrt(m)) * T.exp(1j * phi_exp)
+        phi = 1 / numpy.sqrt(m)*T.exp(phi_exp)  # M*e^(jtheta) = Mcos(theta) + jMsin(theta), so don't need (1 / numpy.sqrt(m)) * T.exp(1j * phi_exp)
         if print_on:
             phi = theano.printing.Print("logreg phi = ")(phi)
 
         if old_method:
             pre_softmax = T.dot(input, W) + b
         else:
-            pre_softmax = T.dot(T.transpose(phi), W) + b
+            pre_softmax = T.dot(T.transpose(T.sin(phi)), W) + b
         if print_on:
             pre_softmax = theano.printing.Print("logreg pre_softmax = ")(pre_softmax)
         self.p_y_given_x = T.nnet.softmax(pre_softmax)
@@ -152,7 +152,6 @@ class LogisticRegression(object):
         # symbolic description of how to compute prediction as class whose
         # probability is maximal
         self.y_pred = T.argmax(self.p_y_given_x, axis=1)
-        # end-snippet-1
 
         # parameters of the model
         self.params = [self.W, self.b, self.S, self.G, self.B]

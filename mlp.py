@@ -45,7 +45,7 @@ old_method = False
 
 class HiddenLayer(object):
     def __init__(self, rng, input, n_in, n_out, d, H, PI, W=None, b=None,
-                 activation=T.tanh):
+                 activation=T.nnet.sigmoid):
         """
         Typical hidden layer of a MLP: units are fully-connected and have
         sigmoidal activation function. Weight matrix W is of shape (n_in,n_out)
@@ -94,7 +94,7 @@ class HiddenLayer(object):
                 ),
                 dtype=theano.config.floatX
             )
-            if activation == T.nnet.sigmoid:
+            if activation == T.tanh:
                 W_values *= 4
 
             W = theano.shared(value=W_values, name='W', borrow=True)
@@ -145,14 +145,14 @@ class HiddenLayer(object):
         if print_on:
             var = theano.printing.Print("var = ")(var)
         phi_exp = (1 / (sigma * numpy.sqrt(d))) * var
-        phi = 1/numpy.sqrt(m)*T.sin(phi_exp)  # M*e^(jtheta) = Mcos(theta) + jMsin(theta), so don't need (1 / numpy.sqrt(m)) * T.exp(1j * phi_exp)
+        phi = 1/numpy.sqrt(m) * T.exp(phi_exp)  # M*e^(jtheta) = Mcos(theta) + jMsin(theta), so don't need (1 / numpy.sqrt(m)) * T.exp(1j * phi_exp)
         if print_on:
             phi = theano.printing.Print("phi = ")(phi)
 
         if old_method:
             lin_output = T.dot(input, self.W) + self.b
         else:
-            lin_output = T.dot(T.transpose(phi), self.W) + self.b
+            lin_output = T.dot(T.transpose(T.sin(phi)), self.W) + self.b
         if print_on:
             lin_output = theano.printing.Print("lin_output = ")(lin_output)
         self.output = (
@@ -245,7 +245,7 @@ class MLP(object):
             PI=perm_matrix,
             activation=theano.tensor.nnet.sigmoid
         )
-        
+
         # L1 norm ; one regularization option is to enforce L1 norm to
         # be small
         self.L1 = (
@@ -272,6 +272,7 @@ class MLP(object):
         # the parameters of the model are the parameters of the two layer it is
         # made out of
         self.params = self.hiddenLayer.params + self.logRegressionLayer.params
+
 
 def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
              dataset='mnist.pkl.gz', batch_size=20, n_hidden=1024):
