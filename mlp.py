@@ -227,7 +227,7 @@ class MLP(object):
             d=d,
             H=H,
             PI=perm_matrix,
-            activation=T.tanh,
+            activation=T.tanh  # if old_method else theano.tensor.nnet.sigmoid,
         )
 
         # The logistic regression layer gets as input the hidden units
