@@ -10,8 +10,8 @@ which is used to determine a class membership probability.
 Mathematically, this can be written as:
 
 .. math::
-  P(Y=i|x, W,b) &= softmax_i(W x + b) \\
-                &= \frac {e^{W_i x + b_i}} {\sum_j e^{W_j x + b_j}}
+P(Y=i|x, W,b) &= softmax_i(W x + b) \\
+    &= \frac {e^{W_i x + b_i}} {\sum_j e^{W_j x + b_j}}
 
 
 The output of the model or prediction is then done by taking the argmax of
@@ -19,7 +19,7 @@ the vector whose i'th element is P(Y=i|x).
 
 .. math::
 
-  y_{pred} = argmax_i P(Y=i|x,W,b)
+y_{pred} = argmax_i P(Y=i|x,W,b)
 
 
 This tutorial presents a stochastic gradient descent optimization method
@@ -28,8 +28,8 @@ suitable for large datasets.
 
 References:
 
-    - textbooks: "Pattern Recognition and Machine Learning" -
-                 Christopher M. Bishop, section 4.3.2
+- textbooks: "Pattern Recognition and Machine Learning" -
+Christopher M. Bishop, section 4.3.2
 
 """
 __docformat__ = 'restructedtext en'
@@ -46,6 +46,8 @@ import theano
 import theano.tensor as T
 
 print_on = False
+old_method = False
+
 
 class LogisticRegression(object):
     """Multi-class Logistic Regression Class
@@ -56,74 +58,96 @@ class LogisticRegression(object):
     determine a class membership probability.
     """
 
-    def __init__(self, input, n_in, n_out):
+    def __init__(self, rng, input, n_in, n_out, d, H, PI, W=None, b=None,
+                 activation=T.tanh):
         """ Initialize the parameters of the logistic regression
 
         :type input: theano.tensor.TensorType
         :param input: symbolic variable that describes the input of the
-                      architecture (one minibatch)
+        architecture (one minibatch)
 
         :type n_in: int
         :param n_in: number of input units, the dimension of the space in
-                     which the datapoints lie
+        which the datapoints lie
 
         :type n_out: int
         :param n_out: number of output units, the dimension of the space in
-                      which the labels lie
+        which the labels lie
 
         """
-        # start-snippet-1
-        # initialize with 0 the weights W as a matrix of shape (n_in, n_out)
-	rng = numpy.random.RandomState(1234)
-        self.W = theano.shared(
-            value = rng.uniform(
+        if W is None:
+            W_values = numpy.asarray(
+                rng.uniform(
                     low=-numpy.sqrt(6. / (n_in + n_out)),
                     high=numpy.sqrt(6. / (n_in + n_out)),
-                    size=(n_in, n_out)
-            ),
-#            value=numpy.zeros(
-#                (n_in, n_out),
-#                dtype=theano.config.floatX
-#            ),
-            name='W',
-            borrow=True
-        )
-        # initialize the baises b as a vector of n_out 0s
-        self.b = theano.shared(
-            value = rng.uniform(
-                    low=-numpy.sqrt(6. / (n_in + n_out)),
-                    high=numpy.sqrt(6. / (n_in + n_out)),
-                    size=(n_out,)
-            ),
-            #value=numpy.zeros(
-            #    (n_out,),
-            #    dtype=theano.config.floatX
-            #),
-            name='b',
-            borrow=True
-        )
+                    size=(d, n_out)
+                ),
+                dtype=theano.config.floatX
+            )
+            if activation == theano.tensor.nnet.sigmoid:
+                W_values *= 4
 
-        # symbolic expression for computing the matrix of class-membership
-        # probabilities
-        # Where:
-        # W is a matrix where column-k represent the separation hyper plain for
-        # class-k
-        # x is a matrix where row-j  represents input training sample-j
-        # b is a vector where element-k represent the free parameter of hyper
-        # plain-k
-	if print_on:
- 		input = theano.printing.Print("input = ")(input)
-        	b = theano.printing.Print("self.b = ")(self.b)
-	        W = theano.printing.Print("self.W = ")(self.W)
-	else:
-        	b = self.b
-	        W = self.W
-	pre_softmax = T.dot(input, W) + b
-	if print_on:
-	        pre_softmax = theano.printing.Print("pre_softmax = ")(pre_softmax)
+            W = theano.shared(value=W_values, name='W', borrow=True)
+
+        if b is None:
+            b_values = numpy.zeros((d,), dtype=theano.config.floatX)
+            b = theano.shared(value=b_values, name='b', borrow=True)
+
+        self.W = W
+        self.b = b
+
+        diag_values = numpy.asarray(rng.normal(0, 1, size=d))
+        G_values = numpy.zeros((d, d))
+        for i in xrange(d):
+            G_values[i, i] = diag_values[i]
+        G = theano.shared(value=G_values, name='G', borrow=True)
+
+        diag_values = rng.randint(0, 2, size=d)
+        # print diag_values
+        B_values = numpy.zeros((d, d))
+        for i in xrange(d):
+            B_values[i, i] = -1 if diag_values[i] == 0 else 1
+        B = theano.shared(value=B_values, name='B', borrow=True)
+
+        S_values = numpy.zeros((d, d))
+        g_frob = (1 / numpy.sqrt((numpy.linalg.norm(G.get_value(borrow=True), ord='fro'))))
+        area = (1.0 / numpy.sqrt(d * numpy.pi)) * ((2 * numpy.pi * numpy.exp(1)) / d) ** (d / 2)
+        s_i = ((2.0 * numpy.pi) ** (-d / 2.0)) * (1.0 / area)
+        # s_i = 0.001
+        for i in xrange(d):
+            S_values[i, i] = s_i * g_frob
+        S = theano.shared(value=S_values, name='S', borrow=True)
+
+        self.S = S
+        self.G = G
+        self.B = B
+
+        # hyperparams
+        sigma = 0.01
+        m = 0.1
+        if print_on:
+            input = theano.printing.Print("logreg input = ")(input)
+            S = theano.printing.Print("logreg S = ")(S)
+            G = theano.printing.Print("logreg G = ")(G)
+            B = theano.printing.Print("logreg B = ")(B)
+        id = numpy.identity(d)
+        var = reduce(T.dot, [S, H, G, PI, H, B, T.transpose(input)])
+        if print_on:
+            var = theano.printing.Print("logreg var = ")(var)
+        phi_exp = (1 / (sigma * numpy.sqrt(d))) * var
+        phi = 1 / numpy.sqrt(m)*T.sin(phi_exp)  # M*e^(jtheta) = Mcos(theta) + jMsin(theta), so don't need (1 / numpy.sqrt(m)) * T.exp(1j * phi_exp)
+        if print_on:
+            phi = theano.printing.Print("logreg phi = ")(phi)
+
+        if old_method:
+            pre_softmax = T.dot(input, W) + b
+        else:
+            pre_softmax = T.dot(T.transpose(phi), W) + b
+        if print_on:
+            pre_softmax = theano.printing.Print("logreg pre_softmax = ")(pre_softmax)
         self.p_y_given_x = T.nnet.softmax(pre_softmax)
-	if print_on:
-        	self.p_y_given_x = theano.printing.Print("self.p_y_given_x = ")(self.p_y_given_x)
+        if print_on:
+            self.p_y_given_x = theano.printing.Print("logreg self.p_y_given_x = ")(self.p_y_given_x)
 
         # symbolic description of how to compute prediction as class whose
         # probability is maximal
@@ -131,7 +155,7 @@ class LogisticRegression(object):
         # end-snippet-1
 
         # parameters of the model
-        self.params = [self.W, self.b]
+        self.params = [self.W, self.b, self.S, self.G, self.B]
 
     def negative_log_likelihood(self, y):
         """Return the mean of the negative log-likelihood of the prediction
@@ -139,19 +163,18 @@ class LogisticRegression(object):
 
         .. math::
 
-            \frac{1}{|\mathcal{D}|} \mathcal{L} (\theta=\{W,b\}, \mathcal{D}) =
-            \frac{1}{|\mathcal{D}|} \sum_{i=0}^{|\mathcal{D}|}
-                \log(P(Y=y^{(i)}|x^{(i)}, W,b)) \\
+        \frac{1}{|\mathcal{D}|} \mathcal{L} (\theta=\{W,b\}, \mathcal{D}) =
+        \frac{1}{|\mathcal{D}|} \sum_{i=0}^{|\mathcal{D}|}
+        \log(P(Y=y^{(i)}|x^{(i)}, W,b)) \\
             \ell (\theta=\{W,b\}, \mathcal{D})
 
         :type y: theano.tensor.TensorType
         :param y: corresponds to a vector that gives for each example the
-                  correct label
+        correct label
 
         Note: we use the mean instead of the sum so that
-              the learning rate is less dependent on the batch size
+        the learning rate is less dependent on the batch size
         """
-        # start-snippet-2
         # y.shape[0] is (symbolically) the number of rows in y, i.e.,
         # number of examples (call it n) in the minibatch
         # T.arange(y.shape[0]) is a symbolic vector which will contain
@@ -163,7 +186,6 @@ class LogisticRegression(object):
         # the mean (across minibatch examples) of the elements in v,
         # i.e., the mean log-likelihood across the minibatch.
         return -T.mean(T.log(self.p_y_given_x)[T.arange(y.shape[0]), y])
-        # end-snippet-2
 
     def errors(self, y):
         """Return a float representing the number of errors in the minibatch
@@ -172,9 +194,8 @@ class LogisticRegression(object):
 
         :type y: theano.tensor.TensorType
         :param y: corresponds to a vector that gives for each example the
-                  correct label
+        correct label
         """
-
         # check if y has same dimension of y_pred
         if y.ndim != self.y_pred.ndim:
             raise TypeError(
@@ -245,14 +266,14 @@ def load_data(dataset,n_hidden):
         variable) would lead to a large decrease in performance.
         """
         data_x, data_y = data_xy
-	pad_size = n_hidden - numpy.size(data_x,axis=1)
+        pad_size = n_hidden - numpy.size(data_x,axis=1)
         #train_set_x.get_value(borrow=True).resize((n_train, d))
         #valid_set_x.get_value(borrow=True).resize((n_valid, d))
         #test_set_x.get_value(borrow=True).resize((n_test, d))
 
-	x = numpy.zeros((numpy.size(data_x,axis=0),n_hidden))
-	x[:,:-pad_size] = data_x
-	data_x = x
+        x = numpy.zeros((numpy.size(data_x,axis=0),n_hidden))
+        x[:,:-pad_size] = data_x
+        data_x = x
         shared_x = theano.shared(numpy.asarray(data_x,
                                                dtype=theano.config.floatX),
                                  borrow=borrow)
@@ -288,14 +309,14 @@ def sgd_optimization_mnist(learning_rate=0.13, n_epochs=1000,
 
     :type learning_rate: float
     :param learning_rate: learning rate used (factor for the stochastic
-                          gradient)
+    gradient)
 
     :type n_epochs: int
     :param n_epochs: maximal number of epochs to run the optimizer
 
     :type dataset: string
     :param dataset: the path of the MNIST dataset file from
-                 http://www.iro.umontreal.ca/~lisa/deep/data/mnist/mnist.pkl.gz
+    http://www.iro.umontreal.ca/~lisa/deep/data/mnist/mnist.pkl.gz
 
     """
     datasets = load_data(dataset)
@@ -381,14 +402,14 @@ def sgd_optimization_mnist(learning_rate=0.13, n_epochs=1000,
     # early-stopping parameters
     patience = 5000  # look as this many examples regardless
     patience_increase = 2  # wait this much longer when a new best is
-                                  # found
+    # found
     improvement_threshold = 0.995  # a relative improvement of this much is
-                                  # considered significant
+    # considered significant
     validation_frequency = min(n_train_batches, patience / 2)
-                                  # go through this many
-                                  # minibatche before checking the network
-                                  # on the validation set; in this case we
-                                  # check every epoch
+    # go through this many
+    # minibatche before checking the network
+    # on the validation set; in this case we
+    # check every epoch
 
     best_validation_loss = numpy.inf
     test_score = 0.
@@ -424,7 +445,7 @@ def sgd_optimization_mnist(learning_rate=0.13, n_epochs=1000,
                 if this_validation_loss < best_validation_loss:
                     #improve patience if loss improvement is good enough
                     if this_validation_loss < best_validation_loss *  \
-                       improvement_threshold:
+                            improvement_threshold:
                         patience = max(patience, iter * patience_increase)
 
                     best_validation_loss = this_validation_loss
