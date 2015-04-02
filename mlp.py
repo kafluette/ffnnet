@@ -515,6 +515,7 @@ if __name__ == '__main__':
             test_scores.append(test_score)
         print "Of %d trials, average validation loss %f %%, average test score %f %%" % \
             (nrepeats+1, numpy.mean(validation_losses) * 100.,
-            numpy.mean(test_scores) * 100.)
+             numpy.mean(test_scores) * 100.)
         print "Of %d trials, best validation loss %f %%, best test score %f %%" % \
-            (nrepeats+1, min(validation_losses) * 100., min(test_scores) * 100.)
+            (nrepeats+1, min(validation_losses) * 100.,
+             min(test_scores) * 100.)
