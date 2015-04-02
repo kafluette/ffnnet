@@ -80,7 +80,7 @@ def build_ffnet(input,d,H,PI,rng):
         if print_on:
                 var = theano.printing.Print("var = ")(var)
         phi_exp = (1 / (sigma * numpy.sqrt(d))) * var
-        phi_exp = phi_exp % (2*numpy.pi)
+#        phi_exp = phi_exp % (2*numpy.pi)
         phi = 1/numpy.sqrt(m)*T.sin(phi_exp) # M*e^(jtheta) = Mcos(theta) + jMsin(theta), so don't need (1 / numpy.sqrt(m)) * T.exp(1j * phi_exp)
         if print_on:
                 phi = theano.printing.Print("phi = ")(phi)
