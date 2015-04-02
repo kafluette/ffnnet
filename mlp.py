@@ -41,7 +41,7 @@ from logistic_sgd import LogisticRegression, load_data  # , build_ffnet
 # theano.config.exception_verbosity = 'low'
 print_on = False
 old_method = False
-nrepeats = 5
+nrepeats = 0
 dorandom = True
 dataset = "iris-binary.pkl.gz"
 
@@ -429,7 +429,7 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
     # considered significant
     validation_frequency = min(n_train_batches, patience / 2)
     # go through this many
-    # minibatche before checking the network
+    # minibatches before checking the network
     # on the validation set; in this case we
     # check every epoch
 
