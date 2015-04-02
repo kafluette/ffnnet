@@ -41,8 +41,9 @@ from logistic_sgd import LogisticRegression, load_data  # , build_ffnet
 # theano.config.exception_verbosity = 'low'
 print_on = False
 old_method = False
-nrepeats = 0
-dorandom = False
+nrepeats = 5
+dorandom = True
+dataset = "iris-binary.pkl.gz"
 
 
 def build_ffnet(input, d, H, PI, rng):
@@ -502,7 +503,7 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
 
 if __name__ == '__main__':
     if nrepeats == 0:
-        test_mlp(dataset="iris.pkl.gz", n_hidden=4)
+        test_mlp(dataset=dataset, n_hidden=4)
     else:
         validation_losses = []
         test_scores = []
@@ -510,7 +511,7 @@ if __name__ == '__main__':
         for i in xrange(nrepeats+1):
             print "*** Starting trial #%d ***" % (i+1,)
             best_validation_loss, best_iter, test_score = \
-                test_mlp(dataset="iris.pkl.gz", n_hidden=4)
+                test_mlp(dataset=dataset, n_hidden=4)
             validation_losses.append(best_validation_loss)
             test_scores.append(test_score)
         print "Of %d trials, average validation loss %f %%, average test score %f %%" % \
