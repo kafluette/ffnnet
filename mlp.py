@@ -34,13 +34,14 @@ from scipy.linalg import hadamard
 import theano
 import theano.tensor as T
 
-from logistic_sgd import LogisticRegression, load_data
+from logistic_sgd import LogisticRegression, load_data, build_ffnet
 
 #theano.config.optimizer = 'None'
 #theano.config.exception_verbosity = 'low'
 
 print_on = False
 old_method = False
+
 
 class HiddenLayer(object):
     def __init__(self, rng, input, n_in, n_out, d, H, PI, W=None, b=None,
@@ -105,44 +106,9 @@ class HiddenLayer(object):
 
         self.W = W
         self.b = b
+	
+	phi, self.B, self.G, self.S = build_ffnet(input,d,H,PI,rng)
 
-        diag_values = numpy.asarray(rng.normal(0, 1, size=d))
-        G_values = numpy.zeros((d, d))
-        for i in xrange(d):
-            G_values[i, i] = diag_values[i]
-        G = theano.shared(value=G_values, name='G', borrow=True)
-       
-        diag_values = rng.randint(0, 1, size=d)
-        B_values = numpy.zeros((d, d))
-        for i in xrange(d):
-            B_values[i, i] = diag_values[i] if diag_values[i] == 1 else -1
-        B = theano.shared(value=B_values, name='B', borrow=True)
-       
-        S_values = numpy.zeros((d, d))
-        g_frob = (1 / numpy.sqrt((numpy.linalg.norm(G.get_value(borrow=True), ord='fro'))))
-        area = (1.0 / numpy.sqrt(d * numpy.pi)) * ((2 * numpy.pi * numpy.exp(1)) / d) ** (d / 2)
-        s_i = ((2.0 * numpy.pi) ** (-d / 2.0)) * (1.0 / area)
-        #s_i = 0.001
-        for i in xrange(d):
-            S_values[i, i] = s_i * g_frob
-        S = theano.shared(value=S_values, name='S', borrow=True)
-
-        self.S = S
-        self.G = G
-        self.B = B
-
-        # hyperparams
-        sigma = 0.01
-        m = 0.1
-	if print_on:
-        	input = theano.printing.Print("input = ")(input)
-        var = reduce(T.dot, [S, H, G, PI, H, B,T.transpose(input)])
-	if print_on:
-        	var = theano.printing.Print("var = ")(var)
-        phi_exp = (1 / (sigma * numpy.sqrt(d))) * var
-        phi = 1/numpy.sqrt(m)*T.sin(phi_exp) # M*e^(jtheta) = Mcos(theta) + jMsin(theta), so don't need (1 / numpy.sqrt(m)) * T.exp(1j * phi_exp)
-	if print_on:
-        	phi = theano.printing.Print("phi = ")(phi)
 
 	if old_method:
         	lin_output = T.dot(input, self.W) + self.b
@@ -161,7 +127,7 @@ class HiddenLayer(object):
 	if old_method:
         	self.params = [self.W, self.b]
 	else:
-	        self.params = [self.W, self.b, self.B, self.G]
+	        self.params = [self.W, self.b, self.B, self.G, self.S]
 
 
 # start-snippet-2
@@ -226,7 +192,7 @@ class MLP(object):
             d=d,
             H=H,
             PI=perm_matrix,
-            activation=T.tanh,
+            activation=theano.tensor.nnet.sigmoid
         )
 
         # The logistic regression layer gets as input the hidden units
@@ -234,7 +200,9 @@ class MLP(object):
         self.logRegressionLayer = LogisticRegression(
             input=self.hiddenLayer.output,
             n_in=n_hidden,
-            n_out=n_out
+            n_out=n_out,
+            H=H,
+            PI=perm_matrix
         )
         # end-snippet-2 start-snippet-3
         # L1 norm ; one regularization option is to enforce L1 norm to
@@ -493,4 +461,4 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
 
 
 if __name__ == '__main__':
-    test_mlp(dataset="iris.pkl.gz",n_hidden=8)
+    test_mlp(dataset="iris.pkl.gz",n_hidden=4)
