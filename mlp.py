@@ -34,7 +34,8 @@ from scipy.linalg import hadamard
 import theano
 import theano.tensor as T
 
-from logistic_sgd import LogisticRegression, load_data  # , build_ffnet
+from logistic_sgd import LogisticRegression  # , load_data  # , build_ffnet
+from tyrosine_data import load_data
 
 
 # theano.config.optimizer = 'None'
