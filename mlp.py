@@ -37,7 +37,6 @@ import theano.tensor as T
 from logistic_sgd import LogisticRegression  # , load_data  # , build_ffnet
 from tyrosine_data import load_data
 
-
 # theano.config.optimizer = 'None'
 # theano.config.exception_verbosity = 'low'
 print_on = False
@@ -504,7 +503,7 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
 
 if __name__ == '__main__':
     if nrepeats == 0:
-        test_mlp(dataset=dataset, n_hidden=4)
+        test_mlp(dataset=dataset, n_hidden=16)
     else:
         validation_losses = []
         test_scores = []
