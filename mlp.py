@@ -270,6 +270,7 @@ class MLP(object):
 
         # these come from classifier (output layer)
         self.misclassification_rate = self.logRegressionLayer.misclassification_rate
+        self.totalaccuracy = self.logRegressionLayer.totalaccuracy
         self.accuracy = self.logRegressionLayer.accuracy
         self.specificity = self.logRegressionLayer.specificity
         self.sensitivity = self.logRegressionLayer.sensitivity
@@ -391,7 +392,7 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
         }
     )
     
-    calc_sens = theano.function(
+    """calc_sens = theano.function(
         inputs=[index],
         outputs=classifier.sensitivity(y),
         givens={
@@ -412,6 +413,15 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
     calc_acc = theano.function(
         inputs=[index],
         outputs=classifier.accuracy(y),
+        givens={
+            x: test_set_x[index * batch_size:(index + 1) * batch_size],
+            y: test_set_y[index * batch_size:(index + 1) * batch_size]
+        }
+    )"""
+    
+    calc_totacc = theano.function(
+        inputs=[index],
+        outputs=classifier.totalaccuracy(y),
         givens={
             x: test_set_x[index * batch_size:(index + 1) * batch_size],
             y: test_set_y[index * batch_size:(index + 1) * batch_size]
@@ -534,15 +544,11 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
                 break
 
     avg_mcr = numpy.mean([calc_mcr(i) for i in xrange(n_test_batches)])
-    avg_sens = numpy.transpose(numpy.mean([numpy.transpose(calc_sens(i)) for i in xrange(n_test_batches)]))
-    avg_spec = numpy.transpose(numpy.mean([numpy.transpose(calc_spec(i)) for i in xrange(n_test_batches)]))
-    avg_acc = numpy.transpose(numpy.mean([numpy.transpose(calc_acc(i)) for i in xrange(n_test_batches)]))
-    print "Avg: mcr %.4f, sens %s, spec %s, acc %s" % (
-        avg_mcr,
-        '%.4f ' % (avg_sens,),
-         '%.4f ' % (avg_spec,),
-         '%.4f ' % (avg_acc,),
-    )
+#    avg_sens = numpy.transpose(numpy.mean([numpy.transpose(calc_sens(i)) for i in xrange(n_test_batches)]))
+#    avg_spec = numpy.transpose(numpy.mean([numpy.transpose(calc_spec(i)) for i in xrange(n_test_batches)]))
+#    avg_acc = numpy.transpose(numpy.mean([numpy.transpose(calc_acc(i)) for i in xrange(n_test_batches)]))
+    avg_totacc = numpy.transpose(numpy.mean([numpy.transpose(calc_totacc(i)) for i in xrange(n_test_batches)]))
+    print "Avg: mcr %.4f, acc %.4f" % (avg_mcr, avg_totacc)
     
     end_time = time.clock()
     print(('Optimization complete. Best validation score of %f %% '

@@ -272,7 +272,11 @@ class LogisticRegression(object):
     
     def sensitivity(self, y):
         return self._calc(y, lambda tp, fp, tn, fn: tp / p)
-
+    
+    def totalaccuracy(self, y):
+        true = T.sum(T.eq(self.y_pred, y))
+        false = T.sum(T.neq(self.y_pred, y))
+        return true/(true+false)
 
 def load_data(dataset,n_hidden):
     ''' Loads the dataset
