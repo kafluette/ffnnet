@@ -41,6 +41,8 @@ from logistic_sgd import LogisticRegression, load_data#, build_ffnet
 
 print_on = False
 old_method = False
+dorandom = False
+
 
 def build_ffnet(input,d,H,PI,rng):
         diag_values = numpy.asarray(rng.normal(0, 1, size=d))
@@ -266,6 +268,12 @@ class MLP(object):
         # same holds for the function computing the number of errors
         self.errors = self.logRegressionLayer.errors
 
+        # these come from classifier (output layer)
+        self.misclassification_rate = self.logRegressionLayer.misclassification_rate
+        self.accuracy = self.logRegressionLayer.accuracy
+        self.specificity = self.logRegressionLayer.specificity
+        self.sensitivity = self.logRegressionLayer.sensitivity
+
         # the parameters of the model are the parameters of the two layer it is
         # made out of
         self.params = self.hiddenLayer.params + self.logRegressionLayer.params
@@ -340,7 +348,7 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
     y = theano.printing.Print('y =')(T.ivector('y'))  # the labels are presented as 1D vector of
     # [int] labels
 
-    rng = numpy.random.RandomState(1234)
+    rng = numpy.random.RandomState(1234 if not dorandom else None)
 
     # construct the MLP class
     classifier = MLP(
@@ -349,7 +357,7 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
         n_in=n_hidden,
         n_hidden=n_hidden,
         n_out=3,
-	d=n_hidden
+        d=n_hidden
     )
 
     # start-snippet-4
@@ -368,6 +376,42 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
     test_model = theano.function(
         inputs=[index],
         outputs=classifier.errors(y),
+        givens={
+            x: test_set_x[index * batch_size:(index + 1) * batch_size],
+            y: test_set_y[index * batch_size:(index + 1) * batch_size]
+        }
+    )
+
+    calc_mcr = theano.function(
+        inputs=[index],
+        outputs=classifier.misclassification_rate(y),
+        givens={
+            x: test_set_x[index * batch_size:(index + 1) * batch_size],
+            y: test_set_y[index * batch_size:(index + 1) * batch_size]
+        }
+    )
+    
+    calc_sens = theano.function(
+        inputs=[index],
+        outputs=classifier.sensitivity(y),
+        givens={
+            x: test_set_x[index * batch_size:(index + 1) * batch_size],
+            y: test_set_y[index * batch_size:(index + 1) * batch_size]
+        }
+    )
+    
+    calc_spec = theano.function(
+        inputs=[index],
+        outputs=classifier.specificity(y),
+        givens={
+            x: test_set_x[index * batch_size:(index + 1) * batch_size],
+            y: test_set_y[index * batch_size:(index + 1) * batch_size]
+        }
+    )
+    
+    calc_acc = theano.function(
+        inputs=[index],
+        outputs=classifier.accuracy(y),
         givens={
             x: test_set_x[index * batch_size:(index + 1) * batch_size],
             y: test_set_y[index * batch_size:(index + 1) * batch_size]
@@ -465,7 +509,7 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
 
                 # if we got the best validation score until now
                 if this_validation_loss < best_validation_loss:
-                    #improve patience if loss improvement is good enough
+                    # improve patience if loss improvement is good enough
                     if (
                             this_validation_loss < best_validation_loss *
                             improvement_threshold
@@ -489,6 +533,17 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
                 done_looping = True
                 break
 
+    avg_mcr = numpy.mean([calc_mcr(i) for i in xrange(n_test_batches)])
+    avg_sens = numpy.transpose(numpy.mean([numpy.transpose(calc_sens(i)) for i in xrange(n_test_batches)]))
+    avg_spec = numpy.transpose(numpy.mean([numpy.transpose(calc_spec(i)) for i in xrange(n_test_batches)]))
+    avg_acc = numpy.transpose(numpy.mean([numpy.transpose(calc_acc(i)) for i in xrange(n_test_batches)]))
+    print "Avg: mcr %.4f, sens %s, spec %s, acc %s" % (
+        avg_mcr,
+        '%.4f ' % (avg_sens,),
+         '%.4f ' % (avg_spec,),
+         '%.4f ' % (avg_acc,),
+    )
+    
     end_time = time.clock()
     print(('Optimization complete. Best validation score of %f %% '
            'obtained at iteration %i, with test performance %f %%') %
@@ -500,3 +555,8 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=1000,
 
 if __name__ == '__main__':
     test_mlp(dataset="iris.pkl.gz",n_hidden=4)
+
+__todo__ = """ On MLP and FONN:
+Best and average MCR
+AUC
+"""

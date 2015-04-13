@@ -32,6 +32,7 @@ References:
                  Christopher M. Bishop, section 4.3.2
 
 """
+from __future__ import division
 __docformat__ = 'restructedtext en'
 
 import cPickle
@@ -238,6 +239,39 @@ class LogisticRegression(object):
             return T.mean(T.neq(self.y_pred, y))
         else:
             raise NotImplementedError()
+
+    def misclassification_rate(self, y):
+        return T.sum(T.neq(self.y_pred, y)) / y.shape[0]
+
+    def _calc(self, y, fn):
+        nclasses = 4
+        val = numpy.zeros((1, nclasses))
+        for clz in xrange(nclasses):
+            
+            clz_arr = T.shared(T.tile([clz], [T.shape(self.y_pred)[0]]), borrow=True) # y.shape[0]
+            
+            true = T.eq(self.y_pred, y)
+            false = T.neq(self.y_pred, y)
+            positives = T.eq(y, clz_arr)
+            negatives = T.neq(y, clz_arr)
+            
+            true_positives = T.sum(T.prod(true, positives))
+            false_positives = T.sum(T.prod(false, positives))
+            
+            true_negatives = T.sum(T.prod(true, negatives))
+            false_positives = T.sum(T.prod(false, negatives))
+            
+            val[clz] = fn(true_positives, false_positives, true_negatives, false_positives)
+        return val
+        
+    def accuracy(self, y):
+        return self._calc(y, lambda tp, fp, tn, fn: (tp + tn) / (p + n))
+    
+    def specificity(self, y):
+        return self._calc(y, lambda tp, fp, tn, fn: tn / n)
+    
+    def sensitivity(self, y):
+        return self._calc(y, lambda tp, fp, tn, fn: tp / p)
 
 
 def load_data(dataset,n_hidden):
