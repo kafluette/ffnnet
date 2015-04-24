@@ -1,8 +1,6 @@
 
 __docformat__ = 'restructedtext en'
 
-import itertools
-
 import numpy
 import numpy.linalg
 import numpy.random
@@ -13,9 +11,12 @@ from scipy.special import gamma
 
 from logistic_sgd import LogisticRegression
 
+from theano_util import *
+
 
 class HiddenLayer(object):
-    def __init__(self, layer_no, num_layers, rng, input, n_in, n_out, d, W=None, b=None, S=None, G=None, B=None):
+    def __init__(self, layer_no, num_layers, rng, input, n_in, n_out, d,
+                 W=None, b=None, S=None, G=None, B=None):
         self.input = input
 
         dbg_name = lambda s: s + '_l' + str(layer_no)
@@ -52,7 +53,7 @@ class HiddenLayer(object):
         if S is None:
             S_values = numpy.zeros((d, d))
             for i in xrange(d):
-                s_i = ((2.0 * numpy.pi) ** (-d / 2.0)) * (1.0 / ((numpy.pi ** (d / 2.0)) / gamma(100))) #gamma((d / 2.0) + 1.0)))
+                s_i = ((2.0 * numpy.pi) ** (-d / 2.0)) * (1.0 / ((numpy.pi ** (d / 2.0)) / gamma(100)))  # gamma((d / 2.0) + 1.0)))
                 S_values[i, i] = s_i * (numpy.linalg.norm(G.get_value(borrow=True), ord='fro') ** (-1.0 / 2.0))
             S = theano.shared(value=S_values, name=dbg_name('S'), borrow=True)
 
