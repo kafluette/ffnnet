@@ -1,166 +1,313 @@
+#!/usr/bin/env python
 
-__docformat__ = 'restructedtext en'
+"""Example which shows with the MNIST dataset how Lasagne can be used."""
 
+from __future__ import print_function
+
+import gzip
 import itertools
-
-import numpy
-import numpy.linalg
-import numpy.random
+import pickle
+import os
+import sys
+import numpy as np
+import lasagne
 import theano
 import theano.tensor as T
 from scipy.linalg import hadamard
 from scipy.special import gamma
+import time
 
-from logistic_sgd import LogisticRegression
+PY2 = sys.version_info[0] == 2
 
+if PY2:
+    from urllib import urlretrieve
 
-class HiddenLayer(object):
-    def __init__(self, layer_no, num_layers, rng, input, n_in, n_out, d, W=None, b=None, S=None, G=None, B=None):
-        self.input = input
+    def pickle_load(f, encoding):
+        return pickle.load(f)
+else:
+    from urllib.request import urlretrieve
 
-        dbg_name = lambda s: s + '_l' + str(layer_no)
+    def pickle_load(f, encoding):
+        return pickle.load(f, encoding=encoding)
 
-        if W is None:
-            # initialize using IWI method
-            # (https://www.researchgate.net/publication/262678356_Interval_based_Weight_Initialization_Method_for_Sigmoidal_Feedforward_Artificial_Neural_Networks)
-            W_values = numpy.asarray(
-                rng.uniform(
-                    low=(2.0 * layer_no - 1.0) / (num_layers - 1.0),
-                    high=(2.0 * layer_no + 1.0) / (num_layers - 1.0),
-                    size=(n_in, n_out)
-                ),
-                dtype=theano.config.floatX
-            )
-            W = theano.shared(value=W_values, name=dbg_name('W'), borrow=True)
+DATA_URL = 'http://deeplearning.net/data/mnist/mnist.pkl.gz'
+DATA_FILENAME = 'mnist.pkl.gz'
 
-        if b is None:
-            b_values = numpy.zeros((n_out,), dtype=theano.config.floatX)
-            b = theano.shared(value=b_values, name=dbg_name('b'), borrow=True)
-
-        if G is None:
-            diag_values = numpy.asarray(rng.normal(0, 1, size=d))
-            G_values = numpy.zeros((d, d))
-            for i in xrange(d):
-                G_values[i, i] = diag_values[i]
-            G = theano.shared(value=G_values, name=dbg_name('G'), borrow=True)
-        if B is None:
-            diag_values = rng.randint(0, 1, size=d)
-            B_values = numpy.zeros((d, d))
-            for i in xrange(d):
-                B_values[i, i] = diag_values[i]
-            B = theano.shared(value=B_values, name=dbg_name('B'), borrow=True)
-        if S is None:
-            S_values = numpy.zeros((d, d))
-            for i in xrange(d):
-                s_i = ((2.0 * numpy.pi) ** (-d / 2.0)) * (1.0 / ((numpy.pi ** (d / 2.0)) / gamma(100))) #gamma((d / 2.0) + 1.0)))
-                S_values[i, i] = s_i * (numpy.linalg.norm(G.get_value(borrow=True), ord='fro') ** (-1.0 / 2.0))
-            S = theano.shared(value=S_values, name=dbg_name('S'), borrow=True)
-
-        self.W = W
-        self.b = b
-
-        # FFnnet params
-        self.S = S
-        self.G = G
-        self.B = B
-
-        lin_output = T.dot(input, self.W) + self.b
-        self.output = T.nnet.nnet.sigmoid(lin_output)
-
-        # parameters of the model
-        self.params = [self.W, self.b, self.S, self.G, self.B]
+NUM_EPOCHS = 50
+BATCH_SIZE = 600
+NUM_HIDDEN_UNITS = 512
+LEARNING_RATE = 0.01
 
 
-class MLP(object):
-    def __init__(self, rng, input, n_in, n_layers, n_nodes, n_out, d, output_clz=LogisticRegression):
-        self.input = input
-        self.n_layers = n_layers
-        self.n_nodes = n_nodes
-        self.n_in = n_in
-        self.n_out = n_out
-        self.d = d
+class FastfoodLayer(lasagne.layers.Layer):
+    incoming = None
+    num_units = None
+    G = None
+    B = None
+    S = None
+    H = None
+    PI = None
 
-        # generate ffnnet parameters perm_matrix (random permutation matrix) and H (hadamard matrix)
-        H_values = hadamard(d, dtype=numpy.int)
+    def __init__(self, incoming, num_units):
+        self.incoming = incoming
+        self.num_units = num_units
+        self.rng = rng = np.random.RandomState()
+
+        # G - Gaussian random matrix
+        diag_values = np.asarray(rng.normal(0, 1, size=num_units))
+        G_values = np.zeros((num_units, num_units))
+        for i in xrange(num_units):
+            G_values[i, i] = diag_values[i]
+        self.G = G = theano.shared(value=G_values, name='G', borrow=True)
+
+        # B - binary scaling matrix
+        diag_values = rng.randint(0, 2, size=num_units)
+        B_values = np.zeros((num_units, num_units))
+        for i in xrange(num_units):
+            B_values[i, i] = diag_values[i] if diag_values[i] == 1 else -1
+        self.B = theano.shared(value=B_values, name='B', borrow=True)
+
+        # S - scaling matrix (???)
+        S_values = np.zeros((num_units, num_units))
+        g_frob = (1 / np.sqrt((np.linalg.norm(G.get_value(borrow=True),
+                                              ord='fro'))))
+        area = (1.0 / np.sqrt(num_units * np.pi)) *\
+               ((2 * np.pi *np.exp(1)) / num_units) ** (num_units / 2)
+        s_i = ((2.0 * np.pi) ** (-num_units / 2.0)) * (1.0 / area)
+        for i in xrange(num_units):
+            S_values[i, i] = s_i * g_frob
+        self.S = theano.shared(value=S_values, name='S', borrow=True)
+
+        # pi - permutation matrix
+        # generated by shuffling the columns of the dxd identity matrix
+        perm_matrix_values = np.identity(num_units)
+        np.random.shuffle(np.transpose(perm_matrix_values))
+        perm_matrix = theano.shared(value=perm_matrix_values, name='PI',
+                                    borrow=True)
+        self.PI = perm_matrix
+
+        # H - Hadamard matrix
+        H_values = hadamard(num_units, dtype=np.int)
         H = theano.shared(value=H_values, name='H', borrow=True)
         self.H = H
 
-        perm_matrix_values = numpy.identity(d)  # generated by shuffling the columns of the dxd identity matrix
-        numpy.random.shuffle(numpy.transpose(perm_matrix_values))
-        perm_matrix = theano.shared(value=perm_matrix_values, name='PI', borrow=True)
-        self.perm_matrix = perm_matrix
+    def get_params(self):
+        return [self.S, self.G, self.B]
 
-        # generate the first hidden layer, taking as inputs the input nodes
-        self.hiddenLayers = []
-        self.hiddenLayers.append(HiddenLayer(
-            layer_no=0 + 1,  # IWI indexing starts at 1
-            num_layers=n_layers,
-            rng=rng,
-            input=input,
-            n_in=n_in,
-            n_out=n_nodes,
-            d=d
-        ))
+    def get_output_for(self, input, **kwargs):
+        sigma = 0.01
+        m = 0.1
+        var = reduce(T.dot, [self.S, self.H, self.G, self.PI, self.H, self.B,
+                             input])
+        phi_exp = (1 / (sigma * np.sqrt(self.num_units))) * var
+        phi_exp = phi_exp % (2*np.pi)
+        phi = 1/np.sqrt(m)*T.sin(phi_exp)  # M*e^(jtheta) = Mcos(theta) + jMsin(theta), so don't need (1 / numpy.sqrt(m)) * T.exp(1j * phi_exp)
+        return phi
 
-        # generate the rest of the hidden layers, taking as inputs the previous layer's output
-        for l in xrange(1, n_layers):
-            self.hiddenLayers.append(HiddenLayer(
-                layer_no=l + 1,
-                num_layers=n_layers,
-                rng=rng,
-                input=self.hiddenLayers[l - 1].output,
-                n_in=n_in,
-                n_out=n_nodes,
-                d=d,
-            ))
 
-        # The output layer gets as input the units of the last hidden layer
-        self.outputLayer = output_clz(
-            input=self.hiddenLayers[n_layers - 1].output,
-            n_in=n_nodes,
-            n_out=n_out
-        )
+def fnnet_loss(yhat, y):
+    return lasagne.objectives.categorical_crossentropy(yhat, y)
 
-        # L1 norm ; one regularization option is to enforce L1 norm to be small
-        self.L1 = (
-            sum([abs(self.hiddenLayers[i].W).sum() for i in xrange(n_layers)])
-            + abs(self.outputLayer.W).sum()
-        )
 
-        # square of L2 norm ; one regularization option is to enforce square of L2 norm to be small
-        self.L2_sqr = (
-            sum([self.hiddenLayers[i].W ** 2 for i in xrange(n_layers)])
-            + (self.outputLayer.W ** 2).sum()
-        )
+def _load_data(url=DATA_URL, filename=DATA_FILENAME):
+    """Load data from `url` and store the result in `filename`."""
+    if not os.path.exists(filename):
+        print("Downloading MNIST dataset")
+        urlretrieve(url, filename)
 
-        # number of errors of the MLP
-        self.errors = self.outputLayer.errors
+    with gzip.open(filename, 'rb') as f:
+        return pickle_load(f, encoding='latin-1')
 
-        # the parameters of the model are the parameters of the layers it is made out of (hiddens + output)
-        self.params = []
-        for i in xrange(n_layers):
-            self.params = self.params + self.hiddenLayers[i].params
-        self.params = self.params #+ self.outputLayer.params
 
-    def cross_entropy_cost(self, y):
-        sigma = 1.0
-        def f(l):
-            return T.dot(self.hiddenLayers[l].W, self.hiddenLayers[l].W)#T.imag(phi(l, 1)(self.hiddenLayers[l-1].output)))
-        def phi(l, j):
-            S = self.hiddenLayers[l].S
-            G = self.hiddenLayers[l].G
-            B = self.hiddenLayers[l].B
-            PI = self.perm_matrix
-            H = self.H
-            d = self.d
-            m = self.n_nodes
-            return lambda h: 1/T.sqrt(m) * T.exp(1j*((1/sigma*T.sqrt(d)) * S * H * G * PI * H * B * h))
-        def h(l, j):
-            return T.nnet.sigmoid(T.dot(self.hiddenLayers[l].W, T.imag(phi(l-1, j)(self.hiddenLayers[l-1].output)))) \
-                if l > 0 else T.nnet.sigmoid(T.dot(self.hiddenLayers[l].W, T.imag(phi(l-1, j)(self.input))))
-        result, updates = theano.scan(
-                    fn=lambda n: f(1),
-        #            fn=lambda n: y[n] * T.log(T.nnet.sigmoid(f(self.n_layers-1))) + (1 - y[n])*T.log(1 - T.nnet.sigmoid(f(self.n_layers-1))),
-                    sequences=[T.arange(10)])
-        return -result.sum()
+def load_data():
+    """Get data with labels, split into training, validation and test set."""
+    data = _load_data()
+    X_train, y_train = data[0]
+    X_valid, y_valid = data[1]
+    X_test, y_test = data[2]
 
+    return dict(
+        X_train=theano.shared(lasagne.utils.floatX(X_train)),
+        y_train=T.cast(theano.shared(y_train), 'int32'),
+        X_valid=theano.shared(lasagne.utils.floatX(X_valid)),
+        y_valid=T.cast(theano.shared(y_valid), 'int32'),
+        X_test=theano.shared(lasagne.utils.floatX(X_test)),
+        y_test=T.cast(theano.shared(y_test), 'int32'),
+        num_examples_train=X_train.shape[0],
+        num_examples_valid=X_valid.shape[0],
+        num_examples_test=X_test.shape[0],
+        input_dim=X_train.shape[1],
+        output_dim=10,
+    )
+
+
+def build_model(input_dim, output_dim,
+                batch_size=BATCH_SIZE, num_hidden_units=NUM_HIDDEN_UNITS):
+    """Create a symbolic representation of a neural network with `input_dim`
+    input nodes, `output_dim` output nodes and `num_hidden_units` per hidden
+    layer.
+    The training function of this model must have a mini-batch size of
+    `batch_size`.
+    A theano expression which represents such a network is returned.
+    """
+    # TODO: more layers and noise layers (dropout/gaussian)
+
+    # d is closest power of 2
+    d = int(2**np.ceil(np.log2(input_dim)))
+    print('batch_size =', batch_size, ', input_dim =', input_dim)
+    print('d =', d)
+
+    l_in = lasagne.layers.InputLayer(
+        shape=(batch_size, input_dim),
+    )
+    l_pad = lasagne.layers.PadLayer(
+        incoming=l_in,
+        width=d
+    )
+    l_ff1 = FastfoodLayer(
+        incoming=l_pad,
+        num_units=d,
+    )  # TODO: trim d back down to num_hidden_units as they were just 0s
+    l_hidden1 = lasagne.layers.DenseLayer(
+        incoming=l_ff1,
+        num_units=d,
+        nonlinearity=lasagne.nonlinearities.sigmoid,
+    )
+    l_ff2 = FastfoodLayer(
+        incoming=l_hidden1,
+        num_units=d,
+    )
+    l_out = lasagne.layers.DenseLayer(
+        incoming=l_ff2,
+        num_units=output_dim,
+        nonlinearity=lasagne.nonlinearities.softmax,
+    )
+    return l_out
+
+
+def create_iter_functions(dataset, output_layer,
+                          X_tensor_type=T.matrix,
+                          batch_size=BATCH_SIZE,
+                          learning_rate=LEARNING_RATE):
+    """Create functions for training, validation and testing to iterate one
+       epoch.
+    """
+    batch_index = T.iscalar('batch_index')
+    X_batch = X_tensor_type('x')
+    y_batch = T.ivector('y')
+    batch_slice = slice(batch_index * batch_size,
+                        (batch_index + 1) * batch_size)
+
+    objective = lasagne.objectives.Objective(output_layer,
+        loss_function=fnnet_loss)
+
+    loss_train = objective.get_loss(X_batch, target=y_batch)
+    loss_eval = objective.get_loss(X_batch, target=y_batch,
+                                   deterministic=True)
+
+    pred = T.argmax(
+        output_layer.get_output(X_batch, deterministic=True), axis=1)
+    accuracy = T.mean(T.eq(pred, y_batch), dtype=theano.config.floatX)
+
+    all_params = lasagne.layers.get_all_params(output_layer)
+    updates = lasagne.updates.sgd(loss_train, all_params, learning_rate)
+
+    iter_train = theano.function(
+        [batch_index], loss_train,
+        updates=updates,
+        givens={
+            X_batch: dataset['X_train'][batch_slice],
+            y_batch: dataset['y_train'][batch_slice],
+        },
+    )
+
+    iter_valid = theano.function(
+        [batch_index], [loss_eval, accuracy],
+        givens={
+            X_batch: dataset['X_valid'][batch_slice],
+            y_batch: dataset['y_valid'][batch_slice],
+        },
+    )
+
+    iter_test = theano.function(
+        [batch_index], [loss_eval, accuracy],
+        givens={
+            X_batch: dataset['X_test'][batch_slice],
+            y_batch: dataset['y_test'][batch_slice],
+        },
+    )
+
+    return dict(
+        train=iter_train,
+        valid=iter_valid,
+        test=iter_test,
+    )
+
+
+def train(iter_funcs, dataset, batch_size=BATCH_SIZE):
+    """Train the model with `dataset` with mini-batch training. Each
+       mini-batch has `batch_size` recordings.
+    """
+    num_batches_train = dataset['num_examples_train'] // batch_size
+    num_batches_valid = dataset['num_examples_valid'] // batch_size
+
+    for epoch in itertools.count(1):
+        batch_train_losses = []
+        for b in range(num_batches_train):
+            batch_train_loss = iter_funcs['train'](b)
+            batch_train_losses.append(batch_train_loss)
+
+        avg_train_loss = np.mean(batch_train_losses)
+
+        batch_valid_losses = []
+        batch_valid_accuracies = []
+        for b in range(num_batches_valid):
+            batch_valid_loss, batch_valid_accuracy = iter_funcs['valid'](b)
+            batch_valid_losses.append(batch_valid_loss)
+            batch_valid_accuracies.append(batch_valid_accuracy)
+
+        avg_valid_loss = np.mean(batch_valid_losses)
+        avg_valid_accuracy = np.mean(batch_valid_accuracies)
+
+        yield {
+            'number': epoch,
+            'train_loss': avg_train_loss,
+            'valid_loss': avg_valid_loss,
+            'valid_accuracy': avg_valid_accuracy,
+        }
+
+
+def main(num_epochs=NUM_EPOCHS):
+    print("Loading data...")
+    dataset = load_data()
+
+    print("Building model and compiling functions...")
+    output_layer = build_model(
+        input_dim=dataset['input_dim'],
+        output_dim=dataset['output_dim'],
+    )
+    iter_funcs = create_iter_functions(dataset, output_layer)
+
+    print("Starting training...")
+    now = time.time()
+    try:
+        for epoch in train(iter_funcs, dataset):
+            print("Epoch {} of {} took {:.3f}s".format(
+                epoch['number'], num_epochs, time.time() - now))
+            now = time.time()
+            print("  training loss:\t\t{:.6f}".format(epoch['train_loss']))
+            print("  validation loss:\t\t{:.6f}".format(epoch['valid_loss']))
+            print("  validation accuracy:\t\t{:.2f} %%".format(
+                epoch['valid_accuracy'] * 100))
+
+            if epoch['number'] >= num_epochs:
+                break
+
+    except KeyboardInterrupt:
+        pass
+
+    return output_layer
+
+
+if __name__ == '__main__':
+    main()
